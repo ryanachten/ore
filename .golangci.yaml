@@ -1,0 +1,77 @@
+version: "2"
+run:
+  timeout: 2m
+linters:
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - ineffassign
+    - unused
+    - misspell
+    - revive
+    - errname
+    - errorlint
+    - unparam
+    - dupword
+  exclusions:
+    generated: lax
+  settings:
+    govet:
+      enable:
+        - shadow
+    errcheck:
+      check-type-assertions: true
+    staticcheck:
+      checks:
+        - all
+        - -ST1000
+    revive:
+      enable-default-rules: true
+      rules:
+        # Error handling
+        - name: error-strings
+        - name: error-naming
+        - name: error-return
+        - name: errorf
+        # Naming
+        - name: var-naming
+        - name: time-naming
+        - name: redefines-builtin-id
+        # Context
+        - name: context-as-argument
+        - name: context-keys-type
+        # Receiver naming
+        - name: receiver-naming
+        # Comments
+        - name: exported
+        - name: package-comments
+        - name: blank-imports
+        # Control flow
+        - name: indent-error-flow
+        - name: superfluous-else
+        - name: early-return
+        # Imports
+        - name: dot-imports
+        - name: duplicated-imports
+        - name: import-shadowing
+        # Code style
+        - name: increment-decrement
+        - name: empty-block
+        - name: unreachable-code
+formatters:
+  enable:
+    - gofmt
+    - goimports
+    - gci
+  settings:
+    gofmt:
+      simplify: true
+    goimports:
+      local-prefixes:
+        - hazard
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(hazard)

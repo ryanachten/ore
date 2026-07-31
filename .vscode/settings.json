@@ -1,0 +1,7 @@
+{
+    "cSpell.language": "en-GB",
+    "go.lintTool": "golangci-lint",
+    "go.lintOnSave": "package",
+    "go.formatTool": "gofmt",
+    "go.useLanguageServer": true
+}
