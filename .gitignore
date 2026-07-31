@@ -1,0 +1,3 @@
+# Mosquitto ephemeral files
+mosquitto/data/*.db
+mosquitto/log/*.log
