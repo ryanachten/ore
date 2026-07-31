@@ -9,3 +9,13 @@ services:
       - ./mosquitto/config:/mosquitto/config
       - ./mosquitto/data:/mosquitto/data # Persistent message storage
       - ./mosquitto/log:/mosquitto/log
+  nats:
+    image: nats
+    container_name: nats
+    restart: always
+    ports: 
+      - "4222:4222" # HTTP connections
+      - "8222:8222" # Monitoring
+    volumes:
+      - ./nats/nats.conf:/etc/nats/nats.conf
+    command: ["-c", "/etc/nats/nats.conf"]

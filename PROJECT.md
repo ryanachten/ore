@@ -169,3 +169,4 @@ Views (v1): canvas world map (entities, discovered deposits, base), inventory pa
 - Refuel delivery (fuel tanker entity) instead of auto-return.
 - Continuous terrain vs grid; pathfinding upgrades.
 - Persist projections to NATS KV vs in-memory.
+- Recorded decisions live in `DECISIONS.md` (e.g. whether NATS's built-in MQTT could replace Mosquitto).
