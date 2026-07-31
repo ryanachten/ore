@@ -3,5 +3,9 @@
     "go.lintTool": "golangci-lint",
     "go.lintOnSave": "package",
     "go.formatTool": "gofmt",
-    "go.useLanguageServer": true
+    "go.useLanguageServer": true,
+    "cSpell.words": [
+        "jetstream",
+        "Mosquitto"
+    ]
 }

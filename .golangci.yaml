@@ -17,6 +17,10 @@ linters:
   exclusions:
     generated: lax
   settings:
+    misspell:
+      ignore-rules:
+        - Mosquitto
+        - mosquitto
     govet:
       enable:
         - shadow
