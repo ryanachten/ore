@@ -5,17 +5,27 @@ services:
     ports:
       - "1883:1883" # Standard MQTT port
       - "9001:9001" # MQTT over WebSocket
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-h", "localhost", "-t", "$$SYS/broker/uptime", "-C", "1", "-W", "3"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
     volumes:
       - ./mosquitto/config:/mosquitto/config
       - ./mosquitto/data:/mosquitto/data # Persistent message storage
       - ./mosquitto/log:/mosquitto/log
   nats:
-    image: nats
+    image: nats:2.14-alpine
     container_name: nats
-    restart: always
     ports: 
       - "4222:4222" # HTTP connections
       - "8222:8222" # Monitoring
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "-", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: always
     volumes:
       - ./nats/nats.conf:/etc/nats/nats.conf
     command: ["-c", "/etc/nats/nats.conf"]
