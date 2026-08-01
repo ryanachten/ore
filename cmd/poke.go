@@ -13,42 +13,70 @@ import (
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
 	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 )
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	connectNATS()
+	connectNATS(ctx)
 	connectMosquitto(ctx)
 }
 
-func connectNATS() {
-	subject := "foo"
+func connectNATS(ctx context.Context) {
+	stream := "FOO"
+	subject1 := "FOO.bar"
+	subject2 := "FOO.baz"
+	consumerID := "bar"
 
 	nc, err := nats.Connect(nats.DefaultURL)
 	if err != nil {
 		panic(err)
 	}
 
-	_, err = nc.Subscribe(subject, func(m *nats.Msg) {
-		slog.Info("received NATS message", "data", string(m.Data))
+	js, err := jetstream.New(nc)
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = js.CreateStream(ctx, jetstream.StreamConfig{
+		Name:     stream,
+		Subjects: []string{subject1, subject2},
 	})
 	if err != nil {
 		panic(err)
 	}
 
-	if err = nc.Flush(); err != nil {
+	cons, err := js.CreateConsumer(ctx, stream, jetstream.ConsumerConfig{
+		Durable:       consumerID,
+		FilterSubject: subject1,
+		AckPolicy:     jetstream.AckExplicitPolicy,
+	})
+	if err != nil {
 		panic(err)
 	}
 
-	if err = nc.Publish(subject, []byte("Hello World from NATS")); err != nil {
+	_, err = js.PublishAsync(subject1, []byte("Hello World from NATS subject 1"))
+	if err != nil {
+		panic(err)
+	}
+	_, err = js.PublishAsync(subject2, []byte("Hello World from NATS subject 2"))
+	if err != nil {
 		panic(err)
 	}
 
-	if err = nc.Flush(); err != nil {
+	consContext, err := cons.Consume(func(msg jetstream.Msg) {
+		slog.Info("received a JetStream message", "msg", string(msg.Data()))
+		if err = msg.Ack(); err != nil {
+			panic(err)
+		}
+	})
+	if err != nil {
 		panic(err)
 	}
+
+	defer consContext.Stop()
 
 	time.Sleep(500 * time.Millisecond)
 }
