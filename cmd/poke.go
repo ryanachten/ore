@@ -32,12 +32,12 @@ func connectNATS(ctx context.Context) {
 
 	nc, err := nats.Connect(nats.DefaultURL)
 	if err != nil {
-		panic(err)
+		fatal("failed to connect to NATS", "err", err)
 	}
 
 	js, err := jetstream.New(nc)
 	if err != nil {
-		panic(err)
+		fatal("failed to create JetStream context", "err", err)
 	}
 
 	_, err = js.CreateStream(ctx, jetstream.StreamConfig{
@@ -45,7 +45,7 @@ func connectNATS(ctx context.Context) {
 		Subjects: []string{subject1, subject2},
 	})
 	if err != nil {
-		panic(err)
+		fatal("failed to create stream", "err", err)
 	}
 
 	cons, err := js.CreateConsumer(ctx, stream, jetstream.ConsumerConfig{
@@ -54,41 +54,50 @@ func connectNATS(ctx context.Context) {
 		AckPolicy:     jetstream.AckExplicitPolicy,
 	})
 	if err != nil {
-		panic(err)
+		fatal("failed to create consumer", "err", err)
 	}
+
+	received := make(chan []byte, 1)
 
 	_, err = js.PublishAsync(subject1, []byte("Hello World from NATS subject 1"))
 	if err != nil {
-		panic(err)
+		fatal("failed to publish to subject", "subject", subject1, "err", err)
 	}
 	_, err = js.PublishAsync(subject2, []byte("Hello World from NATS subject 2"))
 	if err != nil {
-		panic(err)
+		fatal("failed to publish to subject", "subject", subject2, "err", err)
 	}
 
 	consContext, err := cons.Consume(func(msg jetstream.Msg) {
-		slog.Info("received a JetStream message", "msg", string(msg.Data()))
+		received <- msg.Data()
 		if err = msg.Ack(); err != nil {
-			panic(err)
+			fatal("failed to ack message", "err", err)
 		}
 	})
 	if err != nil {
-		panic(err)
+		fatal("failed to start consumer", "err", err)
 	}
 
 	defer consContext.Stop()
 
-	time.Sleep(500 * time.Millisecond)
+	select {
+	case data := <-received:
+		slog.Info("received a JetStream message", "data", data)
+	case <-time.After(5 * time.Second):
+		fatal("timed out waiting for JetStream message")
+	}
 }
 
 func connectMosquitto(ctx context.Context) {
+	u, err := url.Parse("mqtt://localhost:1883")
+	if err != nil {
+		fatal("failed to parse broker URL", "err", err)
+	}
+
 	clientID := "foo"
 	topic := "bar"
 
-	u, err := url.Parse("mqtt://localhost:1883")
-	if err != nil {
-		panic(err)
-	}
+	received := make(chan paho.PublishReceived, 1)
 
 	cfg := autopaho.ClientConfig{
 		ServerUrls:                    []*url.URL{u},
@@ -101,7 +110,7 @@ func connectMosquitto(ctx context.Context) {
 					{Topic: topic, QoS: 1},
 				},
 			}); err != nil {
-				slog.Error("failed to subscribe", "err", err)
+				fatal("failed to subscribe", "err", err)
 			}
 		},
 		OnConnectError: func(err error) { slog.Error("error whilst attempting connection", "err", err) },
@@ -109,7 +118,7 @@ func connectMosquitto(ctx context.Context) {
 			ClientID: clientID,
 			OnPublishReceived: []func(paho.PublishReceived) (bool, error){
 				func(pr paho.PublishReceived) (bool, error) {
-					slog.Info("received Mosquitto message", "topic", pr.Packet.Topic, "payload", pr.Packet.Payload, "retain", pr.Packet.Retain)
+					received <- pr
 					return true, nil
 				}},
 			OnClientError: func(err error) { slog.Error("client error", "err", err) },
@@ -125,20 +134,14 @@ func connectMosquitto(ctx context.Context) {
 
 	con, err := autopaho.NewConnection(ctx, cfg)
 	if err != nil {
-		panic(err)
+		fatal("failed to create connection", "err", err)
 	}
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 
 	if err = con.AwaitConnection(ctx); err != nil {
-		panic(err)
-	}
-
-	_, err = con.Subscribe(ctx, &paho.Subscribe{
-		Subscriptions: []paho.SubscribeOptions{
-			{Topic: topic, QoS: 1},
-		},
-	})
-	if err != nil {
-		panic(err)
+		fatal("failed to await connection", "err", err)
 	}
 
 	_, err = con.Publish(ctx, &paho.Publish{
@@ -147,8 +150,18 @@ func connectMosquitto(ctx context.Context) {
 		Payload: []byte("Hello World from Mosquitto"),
 	})
 	if err != nil {
-		panic(err)
+		fatal("failed to publish", "err", err)
 	}
 
-	time.Sleep(500 * time.Millisecond)
+	select {
+	case pr := <-received:
+		slog.Info("received Mosquitto message", "topic", pr.Packet.Topic, "payload", pr.Packet.Payload, "retain", pr.Packet.Retain)
+	case <-time.After(5 * time.Second):
+		fatal("timed out waiting for Mosquitto message")
+	}
+}
+
+func fatal(err string, params ...any) {
+	slog.Error(err, params...)
+	os.Exit(1)
 }
