@@ -1,6 +1,8 @@
-.PHONY: build
+.PHONY: build test
 build:
 	./gradlew build --configuration-cache
+test:
+	./gradlew test --configuration-cache
 lint:
 	./gradlew spotlessCheck checkstyleMain checkstyleTest spotbugsMain spotbugsTest
 lint-fix:

@@ -8,4 +8,14 @@
     Prefer fixing the code over suppressing; only suppress with a justification
     comment naming the bug pattern and why the finding does not apply.
   -->
+
+  <!--
+    EI_EXPOSE_REP2: the constructor stores the injected SnsClient reference
+    directly. AWS SDK v2 clients (SnsClient) are immutable and thread-safe by
+    design; there is nothing mutable to defensively copy.
+  -->
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+    <Class name="com.ryanachten.ore.services.NotificationService"/>
+  </Match>
 </FindBugsFilter>
