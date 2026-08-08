@@ -7,18 +7,25 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "aws")
 public class AwsProperties {
   private final URI endpointOverride;
+  private final String region;
   private final String accessKeyId;
   private final String secretAccessKeyId;
 
   /** Creates a configuration snapshot from the bound {@code aws.*} properties. */
-  public AwsProperties(URI endpointOverride, String accessKeyId, String secretAccessKeyId) {
+  public AwsProperties(
+      URI endpointOverride, String region, String accessKeyId, String secretAccessKeyId) {
     this.endpointOverride = endpointOverride;
+    this.region = region;
     this.accessKeyId = accessKeyId;
     this.secretAccessKeyId = secretAccessKeyId;
   }
 
   public URI getEndpointOverride() {
     return endpointOverride;
+  }
+
+  public String getRegion() {
+    return region;
   }
 
   public String getAccessKeyId() {
