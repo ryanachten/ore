@@ -1,318 +1,267 @@
-# Ore — Task Breakdown
+# Ore — Task list (vertical slices)
 
-Breakdown of `PROJECT.md` into vertical slices. Each task is small enough to code, PR, and review by a human (target 1–2 hours of implementation). Phases map to the learning goals in `PROJECT.md` §Learning goals; see the index table at the bottom.
+This is the **source of truth for delivery** (project vision and architecture live in [PROJECT.md](./PROJECT.md)). The work is cut into **small slices**: each slice is a single learning you can write yourself and review in one sitting — a handful of files at most. Slices accumulate into thin end-to-end paths (services → brokers → projections → WebSocket → browser), so the wire grows one chunk at a time and every step yields real learnings.
 
-## How to read this file
+Horizontal work (infra, messaging, frontend, domain) is deliberately **interleaved**, never front-loaded.
 
-- **Phase** = a milestone oriented around a set of learning outcomes. Phases build in order; within a phase, tasks are ordered by dependency.
-- **Task** = a vertical slice: one service (or shared package) + the broker wiring that makes it observable + tests + the compose/Makefile changes it needs. A task is the unit of review — one PR, one human reviewer.
-- **Learning** = the concept(s) from `PROJECT.md` §Learning goals this task is designed to exercise.
-- **Slice** = the concrete surface area: package/service, topics/streams touched, files.
-- **Done when** = acceptance criteria. A task is only done when every bullet is verifiable by the reviewer.
+## Working agreement
 
-## Definition of done (applies to every task)
+- **Small enough to write and review yourself.** Each slice is a handful of files and one idea. If a slice starts feeling big, cut scope into its `Deferred` list. Every slice is its own branch/PR; `make up` and `make lint test` stay green.
+- **Browser-visible demos accrue.** The first thing in the browser is the pulse (S5). Until then a slice proves itself in `make logs` instead.
+- **One primary learning per slice.** If a slice feels like two learnings, it's too fat — cut scope into its `Deferred` list.
+- Every slice is its own branch/PR. `make lint test` stays green; the state-machine logic gets unit tests in the same slice.
+- New-to-me tech per slice is bounded and called out, so each slice has a specific thing to absorb (Spring + event-driven first).
+- The **spine** is: `world` clock → facts (Kinesis) → projections → WS → React, plus the ops plane (EventBridge→SNS→SQS) for commands. It lands in small chunks: the pulse (~S5), the map (~S6), the ops plane (~S7). Once it's live everything after rides it; later slices add one domain feature + one concept each.
+- When a slice resolves an entry in PROJECT.md's "Open questions", update it.
 
-- `make lint` and `make test` are green (golangci-lint, `go vet`, unit tests).
-- `docker compose up` brings up any services touched; the slice is observable through the brokers (`mosquitto_sub`, `nats` CLI, or the gateway).
-- Structured logging via `slog`; no ad-hoc payload schemas — messages use the event envelope from `PROJECT.md`.
-- Services communicate only through the brokers, never directly.
+## S1 — The skeleton: envelope, LocalStack, first Spring app
 
----
+**Goal.** `make up` is green with a plain library, the envelope data type everything will ride on, and **one** Spring Boot app that starts clean and is connected to LocalStack. This is the entire Spring surface for now: one app, one AWS client bean, no messaging yet.
 
-## Phase 0 — Foundations & the two brokers
+**Build**
+- Gradle Kotlin DSL multi-module: root + `common` (plain JVM library — **no Spring**); `frontend/` is scaffolded in S5.
+- Event envelope in `common`: `{ id, type, tick, source, version, payload }`, JSON, `version: 1`.
+- docker compose: LocalStack (auth token). Postgres 16 and the `ore-sim` topic are added in the slices that first use them (S8 and S2).
+- `gateway`: the one Spring Boot app. AWS SDK v2 SNS client wired as a bean with the LocalStack endpoint override; actuator `/health`; structured Logback.
+- Makefile: `make up/logs/lint/test`.
+- Tests: envelope (de)serialization round-trip; `version` defaults to 1.
+- Verify: `make up` → healthy; `make logs` shows a clean start.
 
-Everything later depends on a working compose environment. The envelope and topic names are **not** defined up front — they are born with the first message that needs them (1.1) and grow only as new messages actually appear.
+**Primary learning.** LocalStack auth (token in compose); your first Spring Boot app and bean wiring (SDK client with endpoint override). The build scaffold and envelope are just the minimum that makes that app runnable — the schema is born here, but it's a data class and a test, not a learning of its own. The init script and its topic defer to S2.
 
-### 0.1 — Repo scaffolding
-- **Learning:** — (tooling, carried over from `hazard`)
-- **Slice:** Repo root only: `go.mod` (Go 1.26), `Makefile` (`make up/down/logs/lint/test`), `.golangci.yml`, pre-commit config, minimal `README.md` (how to run). No directories yet — `cmd/`, `internal/`, and `web/` come into existence when the first task that needs them lands.
-- **Done when:**
-  - `make lint` and `make test` run and pass on an empty module.
-  - Pre-commit runs golangci-lint on staged Go files.
-  - The only directory in the repo is the one holding `.golangci.yml` config (or none). No empty placeholder folders.
+**Deferred.** Publish (S2), subscribe (S3), WebSocket (S4), frontend (S5), Postgres, EventBridge, SQS, Kinesis, entities.
 
-### 0.2 — Docker Compose: the two brokers
-- **Learning:** — (infra)
-- **Slice:** `docker-compose.yml` with `mosquitto` (MQTT, config for QoS/retain, websockets not yet needed) and `nats` (JetStream enabled); healthchecks; `internal/sim/config.go` holding broker addresses/ports and the seed/default tunables from `PROJECT.md` §Catch-22 economy.
-- **Done when:**
-  - `docker compose up` brings both brokers healthy; `make logs` shows both.
-  - `nats stream ls` works against the compose NATS (JetStream up).
-  - `mosquitto_pub/sub` round-trip works against compose Mosquitto.
-
-### 0.3 — Connectivity slice: `cmd/poke`
-- **Learning:** — (proves the plumbing before any real message)
-- **Slice:** `cmd/poke`: publishes a raw message on MQTT and a raw message on JetStream; `cmd/poke` also subscribes to verify the round-trip through compose. Wire into compose.
-- **Done when:**
-  - Running `poke` against compose logs both publish and receive.
-  - No envelope, topics, or event types are invented here — this is a bare broker round-trip; returns non-zero on failure.
+**Done when.** `make up` → app is healthy and connected to LocalStack; `make lint test` green (envelope round-trip passes).
 
 ---
 
-## Phase 1 — The pulse: world service
+## S2 — The clock ticks: publish to SNS
 
-Learning outcomes introduced: **Command vs event**, **MQTT QoS semantics** (QoS 0), **Topic & stream design** (in practice), **Schema evolution** (seed). This is where the first real message exists, so this is where the envelope and the first topic constant are born — no more, no less.
+**Goal.** The `world` package (still inside the one app) publishes `sim.tick` to SNS every 300ms; `make logs` shows a steady tick stream. Fire-and-forget publishing becomes tangible.
 
-### 1.1 — `world` service: tick publisher
-- **Learning:** **Command vs event** — `sim/tick` is an event, not a command; nothing commands it. **MQTT QoS semantics** — QoS 0, not retained, fire-and-forget. **Topic & stream design** / **Schema evolution** (seeds) — the first real wire message defines the envelope and the first topic constant.
-- **Slice:** `cmd/world`: owns the global clock; publishes `sim/tick` (tick number + timestamp) on MQTT every ~300ms with QoS 0. Alongside it, create `internal/events` (the envelope: version, id, type, tick, timestamp, payload) and `internal/mqtt` (the `sim/tick` topic constant) — scoped to exactly what `sim/tick` needs, nothing else. Owns terrain/seeds only later (see 4.7); for now just the clock. Compose service. Unit tests on the tick counter and envelope round-trip.
-- **Done when:**
-  - `mosquitto_sub -t sim/tick` shows a monotonic tick every ~300ms.
-  - World service does not own entities (no vehicle state anywhere in it).
-  - Tick message carries the envelope with a monotonic tick number.
-  - `internal/events` and `internal/mqtt` contain only what `sim/tick` needs — no vehicle/base topics, no stream names, no event types for things that don't exist yet.
+**Build**
+- LocalStack init script: SNS topic `ore-sim`.
+- `world` package: a scheduler publishes `sim.tick` every 300ms (configurable) using the envelope from `common`.
+- A structured Logback line per tick.
 
-### 1.2 — `cmd/observer`: first listener
-- **Learning:** **Topic & stream design** in practice — receiving real events off the wire; the seed of the ordering lesson (ticks may arrive slightly out of order).
-- **Slice:** `cmd/observer`: subscribes to `sim/tick` using the shared `internal/mqtt` constant, logs receipt sequence and any gaps/out-of-order ticks. Dev tool, not a service (no compose service yet).
-- **Done when:**
-  - Running alongside `world`, it logs each tick with its tick number.
-  - It detects and reports gaps or ordering drift — the first observable evidence of distributed ordering.
+**Primary learning.** SNS publish (fire-and-forget), a scheduled producer, and the LocalStack init script that creates the topic. Bean wiring is already behind you (S1), so this slice is producer code + a config value + one init line.
+
+**Deferred.** SNS subscription (S3), WebSocket (S4), frontend (S5), Postgres, EventBridge, SQS, Kinesis, entities.
+
+**Done when.** `make logs` shows a steady tick stream; `ore-sim` exists (`awslocal sns list-topics`). Nothing is subscribed yet — that's fine.
 
 ---
 
-## Phase 2 — Vehicles on the wire
+## S3 — The subscription: the wire crosses the broker
 
-Learning outcomes introduced: **Command vs event** (the same action produces a command *and* a fact), **MQTT QoS semantics** (QoS 1), **Retained messages & LWT**. Vehicles advance one state-machine step per tick (`PROJECT.md` §Tick model, §Entity state machines).
+**Goal.** The `gateway` package subscribes to `ore-sim` via an **SNS HTTP endpoint**, and the same app now *receives* the ticks it publishes. Logs show the full round-trip: publish out, delivery in.
 
-### 2.1 — Vehicle skeleton: tick-driven telemetry
-- **Learning:** **Command vs event** — telemetry is an event stream of what happened, published after the fact. **Topic & stream design** — the first vehicle topic enters the tree: `ore/vehicles/<id>/telemetry`.
-- **Slice:** `cmd/vehicle` with `--kind=prospector|miner|hauler` and `--id`. Subscribes `sim/tick`, advances an internal clock, publishes telemetry (position, fuel, state) on `ore/vehicles/<id>/telemetry` QoS 0. Extends `internal/mqtt` with the telemetry topic constant (and only that one). Compose runs one demo prospector. Unit tests on tick-advance.
-- **Done when:**
-  - `mosquitto_sub -t ore/vehicles/+/telemetry` shows telemetry updating per tick.
-  - Vehicle has no timer of its own — advancing only on `sim/tick`.
-  - Telemetry uses the envelope.
+**Build**
+- `gateway` package: an SNS HTTP endpoint (subscription confirmation + delivery handler) that logs each received envelope.
+- SNS subscription created in the init script (or via the SDK at startup).
 
-### 2.2 — Retained status + LWT
-- **Learning:** **Retained messages & LWT** — vehicle `status` retained so late subscribers see current state; LWT flags dead entities.
-- **Slice:** `cmd/vehicle`: publishes retained `ore/vehicles/<id>/status` on state change; sets LWT so an unclean disconnect publishes `status = offline`. Compose/observer shows it.
-- **Done when:**
-  - Subscribing after a vehicle has been running shows its current retained status.
-  - `kill -9` of the vehicle publishes `offline` via LWT (observable by a fresh subscriber).
-  - Status transitions mirror the state machine (for now: a minimal `idle` state).
+**Primary learning.** SNS subscription delivery over an HTTP endpoint: confirmation, then POST deliveries — and what "fire-and-forget plus at-least-once" feels like from the consumer side.
 
-### 2.3 — Commands, QoS 1, and acks
-- **Learning:** **MQTT QoS semantics** — QoS 1 for commands: at-least-once with delivery semantics; duplicates possible → an ack channel.
-- **Slice:** `cmd/vehicle`: subscribes `ore/vehicles/<id>/commands` (QoS 1), applies command (v1: `goto x,y`), publishes `ore/vehicles/<id>/ack` (command ID + result). Extends `internal/mqtt` with the `commands` and `ack` topic constants. A dev client (`cmd/console`) to send commands.
-- **Done when:**
-  - Sending `goto` from the console changes the vehicle's target; an ack is observed.
-  - A duplicated command message (re-delivery) results in an ack without double-applying (idempotency seed, formalized in 4.5).
-  - Command and ack both use the envelope.
+**Deferred.** WebSocket broadcast (S4), frontend (S5), Postgres, EventBridge, SQS, Kinesis, entities.
 
-### 2.4 — Prospector state machine
-- **Learning:** **Tick model** — travel/scan as tick-countdowns (`ceil(dist/speed)`); fuel burn per operating tick; reserve + stall rule.
-- **Slice:** `cmd/vehicle --kind=prospector`: `idle → travel → scan → travel → idle`; scan discovers/estimates deposits (emits `deposit.discovered` in 3.1; for now log it). Fuel burn 1/2 ticks, reserve auto-return, `vehicle.stalled` on violation. Unit tests on transitions and fuel math.
-- **Done when:**
-  - Unit tests cover every transition, tick-countdown travel, fuel burn, and the stall rule.
-  - Telemetry/status reflect the current state per tick.
-
-### 2.5 — Miner state machine
-- **Learning:** **Tick model** — extract into cargo until full; travel with cargo; unload.
-- **Slice:** `cmd/vehicle --kind=miner`: `idle → travel → extract → travel → idle`; cargo capacity; emits `materials.extracted` (logged now, fact in 3.1) at unload into cargo. Fuel 1/tick, reserve + stall rule. Unit tests.
-- **Done when:**
-  - Unit tests cover extraction fill, capacity, travel, unload, and stall.
-  - Same tick-driver contract as the prospector (no own timer).
-
-### 2.6 — Hauler state machine
-- **Learning:** **Tick model** — load/travel/unload cycle between miners/deposits and base.
-- **Slice:** `cmd/vehicle --kind=hauler`: `idle → travel → load → travel → unload`; unloads into base storage. Fuel 1/tick. Unit tests.
-- **Done when:**
-  - Unit tests cover load/travel/unload and stall.
-  - State machine file is parallel in shape to the prospector/miner ones (reviewable side by side).
+**Done when.** `make logs` shows outbound publishes *and* inbound deliveries of the same `sim.tick` envelopes.
 
 ---
 
-## Phase 3 — Facts become history
+## S4 — The broadcast: WebSocket server
 
-Learning outcomes introduced: **Event sourcing & projections**, **Replay / rebuild**, **Command/query separation** (the gateway is the first read side), **Backpressure & ack policies** (seed).
+**Goal.** A Spring WebSocket server pushes each received envelope to connected clients; a ~10-line client script proves delivery. The wire is now complete from scheduler to WebSocket — only the browser is missing.
 
-### 3.1 — Facts to JetStream
-- **Learning:** **Event sourcing** — facts are immutable, published to the stream; JetStream log is the source of truth.
-- **Slice:** `cmd/vehicle`: publish domain facts (`deposit.discovered`, `materials.extracted`, `vehicle.stalled`, etc.) to `ore.events` via the envelope, with the `tick` metadata. The `ore.events` stream subject constant is added to the shared constants package here, alongside the fact types these vehicles actually emit — no fact types for base events (4.2), the gateway, or anything not yet built. Stream created (init script or `nats` CLI one-liner in docs). Vehicle acts as a dual-plane publisher (MQTT telemetry + JetStream facts) — the *command vs event* distinction made concrete.
-- **Done when:**
-  - `nats stream view ore.events` shows facts with tick numbers and envelope fields.
-  - Same state change produces telemetry (MQTT) *and* a fact (JetStream) — documented as the command/event split.
-  - Subject naming matches `PROJECT.md` §Topic & stream design; the constants package holds only what this phase publishes.
+**Build**
+- Spring WebSocket endpoint (`/ws`): a `WebSocketHandler` that broadcasts envelopes to connected sessions; connect/disconnect log lines.
+- Verify: a tiny WS client script connects and prints envelopes as they arrive.
 
-### 3.2 — Gateway skeleton + durable consumer
-- **Learning:** **Backpressure & ack policies** (seed) — durable consumer, ack after processing, catch-up on reconnect.
-- **Slice:** `cmd/gateway`: JetStream durable consumer on `ore.events`; logs facts in order; explicit ack strategy. Compose service.
-- **Done when:**
-  - Gateway stopped for N facts, restarted → catches up from where it left off (durable consumer).
-  - Acks are sent only after successful processing (at-least-once).
-  - Consumer config is explicit in code (durable name, ack policy) — the seed for 6.2.
+**Primary learning.** Spring WebSocket server: endpoint config, a handler bean, session lifecycle.
 
-### 3.3 — Ledger projection + replay
-- **Learning:** **Replay / rebuild** — append-only ledger; rebuild = wipe + replay from sequence 0.
-- **Slice:** `cmd/gateway`: ledger projection (append-only record of every fact, with sequence + tick). `nats` CLI one-liner (docs/) that wipes the projection and replays `ore.events` from seq 0.
-- **Done when:**
-  - Ledger matches the stream contents after a live run.
-  - Wiping and replaying from seq 0 reproduces the identical ledger (asserted in a test).
-  - Rebuild one-liner is documented (docs/rebuild.md).
+**Deferred.** Frontend (S5), Postgres, EventBridge, SQS, Kinesis, entities.
 
-### 3.4 — Inventory projection
-- **Learning:** **Event sourcing & projections** — read model rebuilt from facts; **Command/query separation** — reads never touch command paths.
-- **Slice:** `cmd/gateway`: inventory read model — base stockpile + per-vehicle cargo + build queue — derived from `materials.extracted`, `materials.deposited`, `fuel.refined`, `vehicle.built`. Test: rebuild reproduces correct numbers from a scripted fact history.
-- **Done when:**
-  - Projection output matches hand-computed stockpile/cargo from a scripted fact set (golden test).
-  - Rebuild reproduces the same state.
-  - No read path publishes commands — queries read the projection only.
-
-### 3.5 — Worldmap projection
-- **Learning:** **Event sourcing & projections** — the map is derived state, not a service-owned DB.
-- **Slice:** `cmd/gateway`: worldmap read model — deposits discovered, vehicle positions, base — from `deposit.discovered` and position/telemetry facts. Test on rebuild.
-- **Done when:**
-  - Projection reflects deposits/positions derived from facts, matching a scripted history.
-  - Rebuild reproduces the map.
+**Done when.** A connected client receives a stream of `sim.tick` envelopes while `make up` runs.
 
 ---
 
-## Phase 4 — The economy: base service
+## S5 — The Pulse: the browser sees the tick
 
-Learning outcomes introduced: **Outbox pattern**, **At-least-once + idempotency**, **MQTT QoS semantics** (QoS 2), **Command vs event** (base-side). This phase turns the simulation into the catch-22 loop from `PROJECT.md` §Catch-22 economy.
+**Goal.** Open the browser and watch a tick counter ticking every ~300ms. The wire `world → SNS → gateway → WebSocket → React` is complete end-to-end.
 
-### 4.1 — Base service skeleton
-- **Learning:** **Topic & stream design** — base is a first-class actor on its own topics; commands vs events kept separate.
-- **Slice:** `cmd/base`: subscribes `sim/tick` + `ore/base/commands`; owns storage seeded from `internal/sim/config.go` (100 iron, 50 copper, 100 fuel); publishes retained `ore/base/status` (stockpile). Extends `internal/mqtt` with the base topics it subscribes/publishes. Compose service.
-- **Done when:**
-  - Retained base status shows the seed stockpile; updates reflect storage changes.
-  - Base has no vehicle state of its own — vehicles remain separate processes.
+**Build**
+- `frontend/` scaffold (Vite + React + TS).
+- A raw `WebSocket` hook rendering the live tick + last few envelopes.
 
-### 4.2 — Refinery + build queue
-- **Learning:** **Command vs event** — commands in (`refine_fuel`, `build_vehicle`), facts out (`fuel.refined`, `vehicle.built`).
-- **Slice:** `cmd/base`: refinery recipe (1 iron + 1 copper → 2 fuel) and build queue with vehicle costs (prospector 25/15, miner 40/20, hauler 20/30 per `PROJECT.md` §Vehicles). Responds to commands, emits facts (through the outbox from 4.4). Unit tests on recipes/costs/insufficient-material rejection.
-- **Done when:**
-  - `refine_fuel` and `build_vehicle` commands produce the documented outcomes or a rejection reason.
-  - Rejection (insufficient materials) emits an explicit event — no silent no-ops.
-  - Facts use the envelope and carry the tick.
+**Primary learning.** A raw WebSocket client in React — and the first full-stack loop you can watch with your eyes.
 
-### 4.3 — Dispatch: base → vehicles
-- **Learning:** **MQTT QoS semantics** end-to-end — base issues commands to vehicles (QoS 1) the way a player would.
-- **Slice:** `cmd/base`: dispatch logic — issues `ore/vehicles/<id>/commands` (QoS 1), watches acks, emits `vehicle.dispatched`. First working loop: dispatch the prospector to scan a seeded deposit, miner extracts, hauler banks.
-- **Done when:**
-  - A single dispatched prospector completes a scan cycle via commands + acks (integration test or documented manual run).
-  - Vehicle acks reconcile with the dispatch expectation; missing ack is handled (retry or logged).
+**Deferred.** Postgres, EventBridge, SQS, Kinesis, all entity logic, and splitting `world` out of `gateway` into its own module (S9).
 
-### 4.4 — Outbox pattern
-- **Learning:** **Outbox pattern** — base writes facts to a durable outbox before/with the action; a relay publishes to JetStream, so facts survive base crashes. The kafkaesque tie-in.
-- **Slice:** `cmd/base`: outbox table (append fact locally, mark delivered); relay publishes to `ore.events`. Test: kill base mid-dispatch, restart → facts are delivered exactly once, no lost facts.
-- **Done when:**
-  - Facts emitted by base flow through the outbox, not direct publishes.
-  - Crash-restart test: no fact is lost and none is duplicated.
-  - Outbox state is inspectable (log line or command) for review.
-
-### 4.5 — At-least-once + idempotency
-- **Learning:** **At-least-once + idempotency** — duplicate `materials.deposited` must not double-count; dedupe key = envelope ID.
-- **Slice:** `cmd/gateway`: dedupe on envelope ID in the inventory projection (and ledger). Test: publish a duplicate `materials.deposited` (same ID) → projection counts it once.
-- **Done when:**
-  - Replaying a message (or an actual MQTT redelivery) does not double-count deposits.
-  - Dedupe is documented: what key, what store, what window.
-
-### 4.6 — QoS 2 for critical ops
-- **Learning:** **MQTT QoS semantics** — QoS 2 exactly-once for critical operations (build, dispatch).
-- **Slice:** `cmd/base` (publish side) + `cmd/vehicle` (subscribe side): critical commands published QoS 2; document the exactly-once guarantee and its cost. Test/console proves QoS 2 delivery.
-- **Done when:**
-  - Build/dispatch commands travel QoS 2; routine telemetry stays QoS 0.
-  - A QoS 2 command redelivery is handled without double-build (idempotency + QoS 2 interplay documented).
-
-### 4.7 — Full loop integration
-- **Learning:** — (system-level; validates the whole economy against `PROJECT.md` §Catch-22 economy)
-- **Slice:** All services in compose: world + base + prospector/miner/hauler + gateway. Seed terrain and deposits (world owns terrain/seeds now). Demonstrate bootstrap and fuel starvation.
-- **Done when:**
-  - The loop runs unattended: prospector finds → miner extracts → hauler banks → stockpile grows or is spent on new vehicles.
-  - Fuel starvation is observable (vehicle stalls and auto-returns) and does not deadlock the loop.
-  - Tuning knobs all live in `internal/sim/config.go` (no magic numbers in services).
+**Done when.** `make up` → browser shows a ticking counter; `make lint test` green; logs show a steady tick stream.
 
 ---
 
-## Phase 5 — The glass
+## S6 — The Map: a prospector moves
 
-Learning outcomes introduced: **Command/query separation** (visible end-to-end), **Ordering & latency** (as a viewing feature).
+**Goal.** A canvas shows the base and a prospector advancing one step per tick along a canned out-and-back journey, updating live. A browser that joins mid-run receives the current snapshot.
 
-### 5.1 — Gateway WebSocket server
-- **Learning:** **Command/query separation** — one socket, two channels: projection snapshots (queries) + live facts (events).
-- **Slice:** `cmd/gateway`: WebSocket endpoint serving projection snapshots (inventory, worldmap) on connect and on change, plus the live fact stream with `tick`. Test with a scripted client.
-- **Done when:**
-  - On connect a client receives both snapshots; subsequent facts stream live with tick metadata.
-  - WS message kinds match `PROJECT.md` §Frontend (BE→FE snapshots + events).
+**Build**
+- Kinesis stream `ore-facts` added to init script.
+- `vehicle` module: Spring Boot app started with `--kind=prospector`; subscribes to `ore-sim` (SNS HTTP endpoint) for ticks; `Prospector` state machine (idle → travel → … → idle) advances one step per tick; publishes facts (`vehicle.state`, `vehicle.position`) **directly** to Kinesis, partition key `vehicle-<id>`, facts carry `tick`; dedupes duplicate ticks by event id.
+- `gateway`: Kinesis shard consumer (poll loop) folds facts into an in-memory world view; broadcasts a **snapshot on WS connect + incremental updates** on each new fact.
+- `frontend`: canvas draws base + vehicle (dot, state label); re-renders on snapshot/updates.
+- Tests: pure state-machine step tests (no Spring); consumer dedupe test.
 
-### 5.2 — React scaffold
-- **Learning:** — (FE tooling)
-- **Slice:** `web/`: Vite + React + TypeScript, WS client with connect/reconnect, dev proxy to gateway.
-- **Done when:**
-  - App connects to the gateway and logs snapshot + live events (visible in devtools).
-  - Reconnect on drop is handled with snapshot re-sync.
+**Primary learning.** Event-sourcing seeds (facts are immutable, ordered, replayable records); Kinesis put + consume mechanics (partition key, shard iterator, poll loop); snapshot-vs-live on WS; first entity state machine; running one app with a `--kind` arg.
 
-### 5.3 — World map view
-- **Learning:** **Command/query separation** — the map renders the `worldmap` projection, nothing else.
-- **Slice:** `web/`: canvas world map driven by the worldmap snapshot: base, vehicles (by kind), discovered deposits. Update on snapshot change.
-- **Done when:**
-  - Map reflects worldmap projection state; vehicles move as telemetry-derived facts land.
-  - No command path is touched by the renderer.
+**Deferred.** Postgres (projections are in-memory here), commands, deposits, fuel, miner, EventBridge.
 
-### 5.4 — Inventory + build/craft queue + command controls
-- **Learning:** **Command/query separation** — UI reads projections and writes commands; the two never mix.
-- **Slice:** `web/`: inventory panel (stockpile + per-vehicle cargo), build/craft queue; controls that emit `build_vehicle`, `refine_fuel`, `dispatch` → gateway → MQTT. (FE→BE command path from `PROJECT.md` §Frontend.)
-- **Done when:**
-  - Building/refining/dispatching from the UI produces the corresponding MQTT commands and the resulting facts appear back in the panels.
-  - Inventory panel reads the inventory projection; the command path is strictly FE→gateway→MQTT.
-
-### 5.5 — Event ledger + tick scrubber
-- **Learning:** **Ordering & latency** — the tick-scrubbing replay makes ordering visible (the deliberate eventual-consistency lesson).
-- **Slice:** `web/`: event ledger view (append-only from the ledger projection) + a tick scrubber replaying the live stream.
-- **Done when:**
-  - Ledger shows each fact with sequence + tick; scrubber rewinds/replays by tick.
-  - Out-of-order arrival is visible/flagged in the UI — turning the 6.1 discussion into an observable.
+**Done when.** Two browsers; the one that connects mid-run still shows the same live map; gateway logs show facts streaming from Kinesis.
 
 ---
 
-## Phase 6 — Hardening
+## S7 — The Ops Plane: commands & telemetry
 
-Learning outcomes introduced: **Ordering & latency in distributed systems**, **Backpressure & ack policies**, **Schema evolution**.
+**Goal.** Click the map to dispatch the prospector to that point — the command path `gateway → EventBridge → SNS → SQS → vehicle` works, idempotently. The vehicle's status/telemetry streams back over `EventBridge → SNS → gateway → WS`, and a broker inspector shows message counts. Command vs event becomes tangible.
 
-### 6.1 — Ordering & latency
-- **Learning:** **Ordering & latency in distributed systems** — best-effort determinism, eventual consistency accepted in v1, per-entity ordering.
-- **Slice:** Tests + docs: per-entity ordering assertion (facts for one vehicle process in tick order), documented consistency guarantees, `docs/consistency.md` answering "what can a reader observe?"
-- **Done when:**
-  - A test asserts per-entity ordering holds under normal operation and documents where it can break.
-  - `docs/consistency.md` states guarantees, cost, and the deliberate v1 acceptance of eventual consistency.
+**Build**
+- EventBridge rules: `route-commands` (`command.*` → SNS `ore-commands`), `route-telemetry` (`telemetry.*` → SNS `ore-telemetry`).
+- SNS `ore-commands` → SQS `ore-vehicle-1` (+ DLQ) with a **filter policy** (`vehicleId`); SNS `ore-telemetry` → gateway (SNS HTTP endpoint).
+- `gateway`: `POST /api/commands` → `command.dispatch` → EventBridge; plus WS live-feed pane for telemetry; broker inspector (SNS topics, SQS depth via `getQueueAttributes`).
+- `vehicle`: SQS consumer loop (long-poll) with an **idempotent handler** (dedupe by event id); emits `vehicle.dispatched` fact and `telemetry.status`.
+- `frontend`: click-to-dispatch (disabled while in flight), live event feed, inspector panel.
+- Tests: delivering the same command twice causes one action; a command for another vehicle is filtered out and never lands.
 
-### 6.2 — Backpressure & ack policies
-- **Learning:** **Backpressure & ack policies** — JetStream consumer config (ack policy, max ack pending, max deliveries) and MQTT QoS tuning; observability via slog.
-- **Slice:** `cmd/gateway` consumer config + `cmd/vehicle`/`cmd/base` publish settings; slog fields for ack/delivery/redelivery counts. Tests/console demonstrate behaviour under a slow consumer.
-- **Done when:**
-  - Consumer config is explicit and documented; redelivery/backlog is observable in logs.
-  - Slow-consumer behaviour (redelivery, pending) is demonstrated and explained in docs.
+**Primary learning.** Command vs event (the same action produces a command on the ops plane and a fact on Kinesis); EventBridge content-based routing; SNS→SQS filter policies; SQS at-least-once + visibility timeout + idempotency; DLQ present (redrive deferred).
 
-### 6.3 — Schema evolution
-- **Learning:** **Schema evolution** — version field enforcement, one real migration, and the JSON→protobuf path.
-- **Slice:** `internal/events`: enforce `version` on decode; evolve one existing event type with a documented migration (e.g. a v2 payload field with a v1→v2 decoder). Document the protobuf plan.
-- **Done when:**
-  - v1 events decode after the change; v2 events carry the migration.
-  - Unsupported versions fail loudly with a clear error.
-  - `docs/schema-evolution.md` covers the versioning contract and the protobuf/registry path.
+**Deferred.** Runtime per-entity queue provisioning (S11), DLQ redrive tooling, deposits, fuel.
 
-### 6.4 — Docs pass + runbooks
-- **Learning:** — (consolidation)
-- **Slice:** `docs/`: dev run, replay/rebuild one-liners, troubleshooting, topic/stream reference. Update `README.md` + `PROJECT.md` pointers if needed.
-- **Done when:**
-  - A fresh developer can go from clone to running sim in the steps documented.
-  - Rebuild, troubleshooting, and topic/stream reference match the code as built.
+**Done when.** Click-to-dispatch works from the browser; a replayed duplicate command doesn't double-travel; inspector shows queue depth after commands; status events stream live.
 
 ---
 
-## Phase ↔ Learning-outcome index
+## S8 — The Source of Truth: projections & replay
 
-| Concept (`PROJECT.md` §Learning goals) | Where it shows up |
-|---|---|
-| Command vs event | P1.1, P2.1/2.3, P3.1, P4.2 |
-| Command/query separation | P3.4/3.5, P5.1/5.3/5.4 |
-| Topic & stream design | P1.1/1.2, P2.1, P4.1 |
-| MQTT QoS semantics | P1.1 (QoS 0), P2.3 (QoS 1), P4.3, P4.6 (QoS 2) |
-| Retained messages & LWT | P2.2 |
-| At-least-once + idempotency | P4.5 |
-| Event sourcing & projections | P3.1/3.4/3.5 |
-| Replay / rebuild | P3.3 |
-| Ordering & latency | P6.1, P5.5 (as a view) |
-| Backpressure & ack policies | P3.2 (seed), P6.2 |
-| Outbox pattern | P4.4 |
-| Schema evolution | P1.1 (seed), P6.3 |
+**Goal.** The gateway now persists `worldmap`, `inventory`, and `ledger` projections in Postgres from the fact stream; snapshot-on-join reads Postgres; `make replay` wipes the DB and rebuilds everything from Kinesis. The fact log is provably the source of truth.
+
+**Build**
+- Postgres 16 container added to docker compose; now used: Flyway in `gateway`; migrations create `worldmap`, `inventory`, `ledger`; Kinesis consumer writes projections via `JdbcTemplate` (in-memory view deleted).
+- Consumer checkpointing (processed sequence per shard) so replay is explicit.
+- `make replay`: truncate projection tables, drop checkpoints, re-consume from the trim horizon.
+- Tests: projection upsert; replay over existing data converges (idempotent).
+
+**Primary learning.** Projections as disposable read models vs the log as truth; replay/rebuild; Flyway + `JdbcTemplate`; Spring `DataSource` + write transactions.
+
+**Deferred.** Outbox (S11), deposits, miner, fuel, ledger UI.
+
+**Done when.** `make replay` rebuilds a wiped DB into the same map; snapshots come from Postgres; all three projections populated.
+
+---
+
+## S9 — The Discovery: deposits & world reactions
+
+**Goal.** Dispatch the prospector to scan; on completion a deposit node appears on the map with a richness estimate. `world` is now a first-class participant that *reacts to facts*.
+
+**Build**
+- `world`: **split out of the `gateway` app into its own module** here (it gains Postgres + a Kinesis consumer, so it's now a real service); Flyway + Postgres `deposits`; seeds the terrain deterministically at startup; emits `deposit.seeded` facts (direct put for now — outbox is S11).
+- `prospector`: scan step is a tick-countdown; emits `scan.completed` (location + radius).
+- `world` becomes a second Kinesis consumer: reacts to `scan.completed` → emits `deposit.discovered` (deposits within radius, with estimates).
+- `gateway`: `deposits` projection; map renders deposit markers (colored by richness).
+- `frontend`: deposit markers, "scanning" indicator.
+- Envelope note: adding new fact `type`s is the first real **schema evolution** — keep payload parsing tolerant.
+
+**Primary learning.** Event-driven collaboration between services (world reacts to a fact a vehicle published); multiple independent consumers of one stream (world + gateway each own their iterator); schema evolution.
+
+**Deferred.** Extraction, fuel, base, outbox.
+
+**Done when.** Scan → deposit appears with estimate; same seed → same deposits across runs.
+
+---
+
+## S10 — The Mine: extraction, cargo & inventory
+
+**Goal.** A miner extracts ore from a discovered deposit: travels, fills cargo over N ticks, returns to base and unloads. An inventory panel shows stockpile + per-vehicle cargo, derived from facts. Two vehicle kinds run side by side.
+
+**Build**
+- `miner` kind: idle → travel → extract → travel → idle; cargo capacity, extraction rate; unload at base emits `materials.deposited`.
+- Facts: `vehicle.state`, `materials.extracted` (cargo), `materials.deposited` (stockpile).
+- `gateway`: `inventory` projection becomes real — stockpile + per-vehicle cargo, pushed on change.
+- `vehicle-2` queue + DLQ + filter policy (still statically provisioned; runtime provisioning is S11).
+- `frontend`: inventory panel (stockpile + cargo bars); select a miner → dispatch to a deposit (reuses the S7 command path).
+- `:common:sim`: mining rates, cargo sizes, distances (tunables).
+- Tests: miner state machine incl. cargo-full → auto-return.
+
+**Primary learning.** A second entity state machine; derived accounting (stockpile = a fold over facts); economy enters the sim; scaling the command path to a second filtered queue.
+
+**Deferred.** Base service (storage becomes authoritative there), fuel economy, refinery, build queue, outbox, hauler.
+
+**Done when.** Dispatch miner → ore appears in cargo → unloads at base → inventory panel updates.
+
+---
+
+## S11 — The Base: the catch-22 closes
+
+**Goal.** The base service is live: it owns storage, the refinery, the build queue, refuel, and vehicle provisioning. Spend the stockpile to build a second miner → it appears on the map with its own queue and subscription, ready to dispatch. Fuel burns per tick; low fuel → auto-return and refill from the stockpile. This is the whole loop.
+
+**Build**
+- `base` service: Postgres (state + **outbox** table), Flyway, SQS `ore-base` + DLQ; consumes `command.build_vehicle`, `command.refine_fuel`, `command.dispatch`.
+- **Transactional outbox**: state change + fact row in one transaction; a poller publishes outbox rows to Kinesis. The reliable-facts pattern, contrasted with the vehicles' direct puts.
+- Refinery (`1 iron + 1 copper → 2 fuel` → `fuel.refined`); build queue with timers; on completion deduct cost, emit `vehicle.built`, and **provision the new vehicle's SQS queue + SNS subscription at runtime via the SDK** — the flagship provisioning learning.
+- Fuel economy: burn per tick, reserve + auto-return (`vehicle.stalled`), refill from stockpile at zero cost.
+- `gateway`: `inventory` becomes base-authoritative (from base's facts).
+- `frontend`: build panel (kind + cost), refine button, build queue display.
+- Tests: outbox survives a poller outage (fact not lost); build deducts cost + provisions the queue; build deduped by command id.
+
+**Primary learning.** Transactional outbox; runtime resource provisioning via the SDK; a stateful service vs the stateless tick machines; the catch-22 economy (finite stockpile, everything burns fuel).
+
+**Deferred.** Hauler, archive, ledger UI, DLQ redrive.
+
+**Done when.** From a fresh seed you can refine fuel, build a second miner (its queue appears in the inspector), dispatch it, and watch the stockpile drain and refill. Run the stockpile down and the sim visibly stalls until you build.
+
+---
+
+## S12 — The Archive: facts land in S3
+
+**Goal.** Every fact lands in S3 `ore-ledger`, date-partitioned, buffered through Firehose. Cold storage is real.
+
+**Build**
+- Firehose delivery stream `ore-facts-delivery` (Kinesis source) → S3 `ore-ledger` in init script; buffer settings tuned down so it's observable quickly.
+- `make archive` lists the date-partitioned objects; `make archive-peek` dumps one partition's raw facts.
+- Note in the ledger view where S3 (full archive) vs the Postgres ledger (recent facts) differ.
+
+**Primary learning.** Buffering / cold path (Firehose micro-batch → S3); partition layout; hot (Postgres) vs warm (Kinesis) vs cold (S3) planes.
+
+**Deferred.** Athena-style queries, lifecycle policies.
+
+**Done when.** After a minute of sim, `make archive` lists dated objects containing JSON facts.
+
+---
+
+## S13 — The Frontend: ledger, scrubber, polish
+
+**Goal.** The app becomes the whole experience: a ledger view with a tick scrubber, a complete inspector (incl. DLQ counts and consumer lag), polished map/inventory/build panels. Everything rides the existing spine.
+
+**Build**
+- Ledger view from the `ledger` projection (gateway REST/WS); tick scrubber pauses and steps through captured facts (historical replay across restarts = stretch).
+- Inspector completes: SNS topics, SQS queues (depth + DLQ), Kinesis shard iterator age.
+- Empty/loading/error states; README screenshots.
+- Tests: FE-adjacent (command validation, rendering states) as far as makes sense.
+
+**Primary learning.** Command/query separation end-to-end (reads via projections, writes via the ops plane); latency perception (live push vs scrubber replay).
+
+**Deferred.** The stretch list below.
+
+**Done when.** You can watch the whole loop from the ledger, scrub ticks, inspect every broker, and the sim runs unattended.
+
+---
+
+## S14 — Depth (stretch)
+
+Each item is one focused learning; pick up as desired. "Appears in" maps to PROJECT.md's learning table.
+
+- **Hauler** — load/unload handoff between miner ↔ hauler ↔ base: inter-entity event choreography. *Concept: event choreography, orchestration-vs-choreography.*
+- **DLQ redrive** — `make redrive` tooling to drain DLQs back onto the queue. *Concept: dead-letter handling.*
+- **SQS FIFO ordering** — per-entity command ordering via FIFO queues. *Concept: ordering.*
+- **EventBridge Scheduler as the clock** — replaces the SNS `sim.tick`. *Concept: command vs event (a scheduled command).*
+- **Consumer-lag metrics** — shard iterator age surfaced in the inspector. *Concept: backpressure & throttling.*
+- **Avro / schema registry** — versioned binary envelopes. *Concept: schema evolution.*
+- **Terraform provisioning** — replace the static init script. *Concept: runtime provisioning.*

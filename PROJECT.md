@@ -4,115 +4,131 @@ A distributed mining and resource-utilisation simulation built to learn **event-
 
 Raw materials are prospected in the landscape, extracted, and hauled back to the base where they are stored and spent to build new vehicles and mining equipment. The base is seeded with a small stockpile and one of each vehicle — **materials are required to extract materials** — so the player must bootstrap capability before the stockpile runs out.
 
-The simulation is an evolution of [hazard](https://github.com/ryancdotnet/hazard): the same tick-based entity model, but the entities are now *separate processes* that communicate only through message brokers instead of an in-process event bus.
+The simulation is an evolution of [hazard](https://github.com/ryancdotnet/hazard): the same tick-based entity model, but the entities are now *separate Spring Boot processes* that communicate only through AWS messaging services emulated by LocalStack.
 
 ## Learning goals
 
-The point of this project is to get hands-on with event-driven architecture. Each milestone maps to specific concepts:
+The point of this project is to get hands-on with event-driven architecture on AWS services. Each milestone maps to specific concepts:
 
 | Concept | Where it shows up |
 |---|---|
-| Command vs event | Commands on MQTT, facts on JetStream — the same action produces both |
-| Command/query separation | Commands to MQTT, reads from projections |
-| Topic & stream design | `ore/vehicles/<id>/...` topic tree; `ore.events` stream subjects |
-| MQTT QoS semantics | QoS 0 ticks, QoS 1 commands, QoS 2 exactly-once for critical ops |
-| Retained messages & LWT | Vehicle `status` retained; LWT flags dead entities |
-| At-least-once + idempotency | Duplicate `materials.deposited` must not double-count |
-| Event sourcing & projections | JetStream log is the source of truth; read models are rebuilt from it |
-| Replay / rebuild | Wipe projections, replay the stream from sequence 0 |
-| Ordering & latency in distributed systems | Tick-number metadata; eventual consistency accepted in v1 |
-| Backpressure & ack policies | JetStream consumer ack strategies |
-| Outbox pattern | Base emits facts reliably via an outbox (kafkaesque tie-in) |
-| Schema evolution | Enveloped events with a `version` field; JSON in v1, protobuf later |
+| Command vs event | Commands ride EventBridge→SNS→SQS; facts are immutable records on Kinesis — the same action produces both |
+| Command/query separation | Commands via SQS; reads from Postgres projections |
+| Event bus & content-based routing | EventBridge rules route operational events by type/pattern |
+| Pub/sub fan-out + filter policies | SNS topics fan telemetry to the gateway; SNS filter policies route commands to per-entity SQS queues |
+| Delivery semantics | SQS at-least-once + visibility timeout + DLQ (≈ MQTT QoS 1); SNS fire-and-forget (≈ QoS 0); Kinesis ordered per partition |
+| Idempotency | Dedupe by event id + tick — SQS/Kinesis duplicates must not double-count |
+| Event sourcing & projections | Kinesis `ore-facts` is the source of truth; Postgres read models are rebuilt from it |
+| Replay / rebuild | Truncate projections, replay Kinesis from the trim horizon |
+| Ordering & latency | Per-partition ordering; tick-number metadata; eventual consistency accepted in v1 |
+| Backpressure & throttling | Kinesis shard iterator age / consumer lag, SQS batch sizes |
+| Transactional outbox | Base writes state + fact in one Postgres transaction; a poller publishes to Kinesis |
+| Dead-letter handling | Per-queue DLQ + redrive tooling |
+| Archive / cold path | Firehose buffers Kinesis facts into the S3 ledger, partitioned by date |
+| Schema evolution | Enveloped events with a `version` field; JSON in v1 |
+| Runtime resource provisioning | Building a vehicle provisions its SQS queue + SNS subscription via the SDK |
 
 ## Tech stack
 
-- **Backend**: Go 1.26 — one binary per service (`cmd/`), shared packages in `internal/`
-- **Message brokers**: [Eclipse Mosquitto](https://mosquitto.org/) (MQTT) + [NATS Server](https://nats.io/) with JetStream
-- **Clients**: [eclipse-paho/paho.golang](https://github.com/eclipse-paho/paho.golang) for MQTT, [nats-io/nats.go](https://github.com/nats-io/nats.go) for NATS
-- **Frontend**: React + TypeScript + Vite, WebSocket to the gateway
-- **Infra**: docker-compose for brokers + services
-- **Conventions**: structured logging via `slog`, golangci-lint, pre-commit (carried over from `hazard`)
+- **Backend**: Java 21, Spring Boot 3.4, Gradle (Kotlin DSL) multi-module — one runnable app per service
+- **AWS access**: `software.amazon.awssdk` v2 clients (kinesis, sns, sqs, eventbridge, firehose, s3) wired as plain Spring beans with a LocalStack endpoint override — no Spring Cloud Stream, so delivery semantics stay visible
+- **Infra**: LocalStack (single image; requires a free account auth token), Postgres 16, docker compose
+- **DB**: Flyway migrations + `JdbcTemplate` (mechanics stay visible; no JPA magic)
+- **Frontend**: React + TypeScript + Vite, raw WebSocket to the gateway
+- **Conventions**: structured logging via Logback, per-module unit tests, `make` targets
 
 ## Architecture
 
-Two brokers, two jobs:
+Two planes, five AWS services:
 
-- **MQTT = the control / telemetry plane.** The base and every vehicle communicate through it: commands, acknowledgements, telemetry, retained status, last-will messages. This is the "living" channel.
-- **NATS JetStream = the fact / event-sourcing plane.** Every state change is published as an immutable fact. Streams are the source of truth; durable consumers rebuild read models (projections). This is the "history" channel.
+- **Facts plane (Kinesis)** = the event-sourcing log. Every state change is an immutable fact published to `ore-facts`, partition key = aggregate id (base, `vehicle-<id>`). Ordered, replayable. This is the source of truth.
+- **Ops plane (EventBridge → SNS → SQS)** = the living channel. Services publish operational events to the EventBridge bus; rules route telemetry → SNS → gateway (→ WebSocket → FE) and commands → SNS → per-entity SQS queues (filter-policy scoped).
+- **Archive plane (Firehose → S3)** = the cold ledger. Firehose consumes the Kinesis stream and lands raw facts in `ore-ledger`, date-partitioned.
 
 ```mermaid
 graph TB
-    subgraph Edge["Control / Telemetry (MQTT)"]
-        World[world service<br/>tick publisher]
-        Base[base service<br/>storage · recipes · build queue]
-        P[prospector]
-        M[miner]
-        H[hauler]
-        Mosq[(Mosquitto)]
-        World -->|sim/tick| Mosq
-        Base <-->|ore/base/commands · events| Mosq
-        P <-->|ore/vehicles/p/commands · telemetry · status| Mosq
-        M <-->|ore/vehicles/m/commands · telemetry · status| Mosq
-        H <-->|ore/vehicles/h/commands · telemetry · status| Mosq
+    subgraph Ops["Control / telemetry plane (EventBridge + SNS + SQS)"]
+        EB[EventBridge bus]
+        ST[SNS ore-sim]
+        TT[SNS ore-telemetry]
+        CT[SNS ore-commands]
+        QV[SQS ore-vehicle-&lt;id&gt; + DLQ]
+        QB[SQS ore-base + DLQ]
+        EB -.rule telemetry.*.-> TT
+        EB -.rule command.*.-> CT
+        CT -.filter policy per entity.-> QV
+        CT -.-> QB
     end
-
-    subgraph Facts["Facts / Event Sourcing (NATS JetStream)"]
-        NS[(NATS JetStream<br/>ore.events stream)]
-        Inv[inventory projection]
-        Map[worldmap projection]
-        Led[ledger projection]
-        NS --> Inv
-        NS --> Map
-        NS --> Led
+    subgraph Facts["Facts / event-sourcing plane (Kinesis)"]
+        K[(Kinesis ore-facts)]
+        FH[Firehose ore-facts-delivery]
+        S3[(S3 ore-ledger)]
+        K --> FH --> S3
     end
-
     subgraph Fe["Frontend"]
-        React[React app<br/>map · inventory · build queue]
+        React[React app<br/>map · inventory · build queue · ledger]
     end
-
-    P -->|facts| NS
-    M -->|facts| NS
-    H -->|facts| NS
-    Base -->|facts| NS
-
-    Gw[gateway service<br/>MQTT→JetStream bridge · projections · WS server]
-    NS -.durable consumers.-> Gw
-    Gw <-->|snapshots · live events| React
-    React -->|commands| Gw
-    Gw -->|ore/base/commands etc.| Mosq
+    World[world service] --sim.tick--> ST
+    Vehicle[vehicle service] --telemetry / status--> EB
+    Vehicle --facts--> K
+    Base[base service] --facts via outbox--> K
+    QV --> Vehicle
+    QB --> Base
+    GW[gateway service] -.shard consumer.- K
+    TT --> GW
+    GW <--> React
+    React --commands--> GW
+    GW --> EB
 ```
 
 Services never talk directly — only through the brokers.
+
+## Resource inventory
+
+| Resource | Name | Role |
+|---|---|---|
+| EventBridge bus | default | services publish all operational events |
+| EventBridge rule | `route-telemetry` | `telemetry.*` / `status.*` → SNS `ore-telemetry` |
+| EventBridge rule | `route-commands` | `command.*` → SNS `ore-commands` |
+| SNS topic | `ore-sim` | world publishes `sim.tick` (fire-and-forget) |
+| SNS topic | `ore-telemetry` | fan-out to gateway (WS → FE) |
+| SNS topic | `ore-commands` | fan-out to per-entity SQS via filter policies |
+| SQS queue | `ore-base` (+ DLQ) | base commands: build, refine, dispatch |
+| SQS queue | `ore-vehicle-<id>` (+ DLQ) | per-vehicle commands; provisioned on build |
+| Kinesis stream | `ore-facts` | ordered fact log, partition key = aggregate id |
+| Firehose | `ore-facts-delivery` | Kinesis source → S3 |
+| S3 bucket | `ore-ledger` | raw fact archive, partitioned by date |
+
+Provisioned by a LocalStack init script at startup; per-vehicle queues are provisioned at runtime by `base` when a vehicle is built.
 
 ## Services
 
 | Service | Responsibility |
 |---|---|
-| `world` | Owns the global clock. Publishes `sim/tick` (tick number + timestamp) on MQTT every ~300ms. Owns terrain and seeds deposits. Does **not** own entities. |
-| `base` | Material storage, build queue, refinery, vehicle dispatch. Reacts to tick + commands; issues command messages to vehicles over MQTT. Emits facts via an outbox. |
-| `vehicle` | One binary, `--kind=prospector\|miner\|hauler`. A state machine that advances one step per tick. Publishes telemetry and facts. |
-| `gateway` | Single bridge for the frontend. Subscribes entity facts from JetStream, runs the projections, serves the React app over WebSocket (snapshots + live event stream), and turns FE commands into MQTT command messages. |
+| `world` | Owns the global clock: publishes `sim/tick` to SNS `ore-sim` every ~300ms. Owns terrain and seeds deposits (Postgres). Does **not** own entities. |
+| `base` | Material storage, build queue, refinery, vehicle dispatch. Postgres state + transactional outbox → Kinesis facts. Consumes `ore-base` queue. Provisions a vehicle's queue + subscription when it is built. |
+| `vehicle` | One app, `--kind=prospector\|miner\|hauler`. A state machine that advances one step per tick. Consumes its own SQS queue; publishes telemetry to EventBridge and facts to Kinesis. |
+| `gateway` | Kinesis shard consumer → Postgres projections; SNS telemetry consumer → WebSocket push; turns FE commands into EventBridge events; serves snapshots and the ledger. |
 
 ## Tick model
 
-- The `world` service owns the clock. It broadcasts `sim/tick` over MQTT (QoS 0, not retained).
+- The `world` service owns the clock. It broadcasts `sim.tick` on SNS `ore-sim` (fire-and-forget, not persisted).
 - Entities do **not** run their own sim timers. On each tick they advance their state machine by exactly one step.
 - Travel, scanning and extraction are modelled as **tick-countdowns** (e.g. travel to `(x,y)` takes `ceil(dist / speed)` ticks).
 - Fuel is consumed per operating tick.
 - Facts carry the `tick` number they occurred on, so downstream can reason about ordering.
-- Determinism is **best-effort**: processes may process ticks slightly out of order. v1 accepts eventual consistency — this is an intentional, documented learning point about ordering in distributed systems.
+- SNS is at-least-once, so ticks may duplicate or arrive slightly out of order. Consumers track last-processed tick and dedupe by event id.
+- Determinism is **best-effort**; v1 accepts eventual consistency — an intentional, documented learning point about ordering in distributed systems.
 
-
-## Projections (durable consumers on `ore.events`)
+## Projections (Postgres)
 
 | Projection | Read model | Drives |
 |---|---|---|
 | `inventory` | base stockpile + per-vehicle cargo + build queue | FE inventory, crafting gate, economy balance |
 | `worldmap` | deposits discovered, vehicle positions, base | FE map render |
-| `ledger` | append-only record of every event | FE history, replay, debugging |
+| `ledger` | recent facts | FE history, replay, debugging (S3 is the full archive) |
 
-All projections are **rebuildable**: wipe the KV, replay the stream from sequence 0. `nats` CLI one-liners in the docs.
+All projections are **rebuildable**: wipe the tables, replay Kinesis from the trim horizon (`make replay`).
 
 ## Domain model
 
@@ -132,7 +148,7 @@ Materials are simultaneously *currency* (build vehicles) and *consumable* (burn 
 | **Miner** | Travels to a known deposit, extracts ore into cargo until full, returns to base. | 40 iron + 20 copper |
 | **Hauler** | Ferries ore between miners/deposits and base, unloads into storage. | 20 iron + 30 copper |
 
-Fuel burn (defaults, tune later): prospector 1 / 2 ticks, miner 1 / tick, hauler 1 / tick. Vehicles keep a reserve to return to base; when fuel runs low they auto-return to refuel (base refills from stockpile at zero cost) — this is the soft pressure that forces spending.
+Fuel burn (defaults, tune later): prospector 1 / 2 ticks, miner 1 / tick, hauler 1 / tick. Vehicles keep a reserve to return to base; when fuel runs low they auto-return to refuel (base refills from stockpile at zero cost) — the soft pressure that forces spending.
 
 ### Catch-22 economy (seed + defaults)
 
@@ -140,7 +156,7 @@ Base starts with: **1 prospector, 1 miner, 1 hauler** and stockpile **100 iron, 
 
 Refinery recipe: `1 iron + 1 copper → 2 fuel`.
 
-The loop: prospectors find deposits → miners extract → haulers bank the materials → spend on new vehicles and fuel → more capacity → faster extraction. The tension is early: the stockpile is finite and everything burns fuel, so a player who dispatches unwisely stalls. Numbers are tunable in a single config file (`internal/sim/config.go`).
+The loop: prospectors find deposits → miners extract → haulers bank the materials → spend on new vehicles and fuel → more capacity → faster extraction. The tension is early: the stockpile is finite and everything burns fuel, so a player who dispatches unwisely stalls. Numbers are tunable in a single config (`:common:sim`).
 
 ## Entity state machines
 
@@ -153,19 +169,30 @@ Each vehicle is a state machine advancing per tick:
 
 Stall rule: an operation that would take fuel below reserve halts the vehicle (`vehicle.stalled`), and it returns to base to refuel.
 
+## Outbox pattern
+
+`base` and `world` are stateful (Postgres) and emit facts reliably via a **transactional outbox**: the state change and the fact are written in one transaction, and a poller publishes outbox rows to Kinesis. Vehicles are stateless tick machines and publish facts directly (at-least-once; consumers dedupe by event id + tick). Both sides of the reliable-messaging question are exercised.
+
 ## Frontend (React)
 
-WebSocket connection to the gateway. Message kinds:
+Raw WebSocket connection to the gateway. Message kinds:
 
 - **BE → FE**: projection snapshots (inventory, worldmap) on connect + on change; live event stream (each fact with its `tick`, enabling a tick scrubber for replay)
 - **FE → BE**: commands — `build_vehicle`, `refine_fuel`, `dispatch` (select entity + destination)
 
-Views (v1): canvas world map (entities, discovered deposits, base), inventory panel (stockpile + per-vehicle cargo), build/craft queue, event ledger.
+Views (v1): canvas world map (entities, discovered deposits, base), inventory panel (stockpile + per-vehicle cargo), build/craft queue, event ledger, and a small "broker inspector" showing live messages per SNS topic / SQS queue / Kinesis shard.
+
+## Delivery
+
+Delivery is tracked in [TASK.md](./TASK.md) — a vertical-slice breakdown of this project. Each slice delivers a complete end-to-end path visible in the browser and maps to specific learning concepts in the table above.
 
 ## Open questions / future work
 
-- Protobuf (or Avro + registry, as in kafkaesque) event encoding and schema evolution tooling.
+- Tick routing through SNS vs EventBridge Scheduler as the clock.
+- Ledger reads from Postgres vs S3-only (Athena-style queries).
+- Split the Kinesis consumer out of the gateway into a dedicated `projector` service.
+- Protobuf / Avro event encoding and schema-registry tooling.
 - Distributed tick ordering: sequence-number reconciliation, or per-entity clocks — a deliberate later exercise.
 - Refuel delivery (fuel tanker entity) instead of auto-return.
 - Continuous terrain vs grid; pathfinding upgrades.
-- Persist projections to NATS KV vs in-memory.
+- Terraform (or `awslocal`) as the provisioning mechanism for the static resources vs the LocalStack init script.
