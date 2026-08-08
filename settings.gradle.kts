@@ -4,3 +4,4 @@ pluginManagement {
 
 rootProject.name = "ore"
 include("common")
+include("gateway")
