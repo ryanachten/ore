@@ -5,6 +5,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sns.SnsClient;
 
 /** Configuration for AWS services. */
@@ -20,6 +21,7 @@ public class AwsConfiguration {
 
     return SnsClient.builder()
         .credentialsProvider(credentialsProvider)
+        .region(Region.of(props.getRegion()))
         .endpointOverride(props.getEndpointOverride())
         .build();
   }
