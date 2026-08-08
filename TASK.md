@@ -20,18 +20,18 @@ Horizontal work (infra, messaging, frontend, domain) is deliberately **interleav
 
 **Build**
 - Gradle Kotlin DSL multi-module: root + `common` (plain JVM library — **no Spring**); `frontend/` is scaffolded in S5.
-- Event envelope in `common`: `{ id, type, tick, source, version, payload }`, JSON, `version: 1`.
+- Event envelope in `common`: `{ id, type, tick, source, version, payload }`, `version: 1`. A pure data class for now — JSON mapping lands in S2, where the publish payload gives it something real to map.
 - docker compose: LocalStack (auth token). Postgres 16 and the `ore-sim` topic are added in the slices that first use them (S8 and S2).
-- `gateway`: the one Spring Boot app. AWS SDK v2 SNS client wired as a bean with the LocalStack endpoint override; actuator `/health`; structured Logback.
+- `gateway`: the one Spring Boot app. AWS SDK v2 SNS client wired as a bean with the LocalStack endpoint override; actuator `/health`. (Structured Logback defers to S2, where the tick stream gives it something to format.)
 - Makefile: `make up/logs/lint/test`.
-- Tests: envelope (de)serialization round-trip; `version` defaults to 1.
+- Tests: `version` defaults to 1; payload is immutable. (The round-trip test moves to S2 with the JSON mapping.)
 - Verify: `make up` → healthy; `make logs` shows a clean start.
 
 **Primary learning.** LocalStack auth (token in compose); your first Spring Boot app and bean wiring (SDK client with endpoint override). The build scaffold and envelope are just the minimum that makes that app runnable — the schema is born here, but it's a data class and a test, not a learning of its own. The init script and its topic defer to S2.
 
-**Deferred.** Publish (S2), subscribe (S3), WebSocket (S4), frontend (S5), Postgres, EventBridge, SQS, Kinesis, entities.
+**Deferred.** Publish and the envelope's JSON mapping (S2), subscribe (S3), WebSocket (S4), frontend (S5), Postgres, EventBridge, SQS, Kinesis, entities.
 
-**Done when.** `make up` → app is healthy and connected to LocalStack; `make lint test` green (envelope round-trip passes).
+**Done when.** `make up` → app is healthy and connected to LocalStack; `make lint test` green (envelope tests pass).
 
 ---
 
@@ -41,7 +41,7 @@ Horizontal work (infra, messaging, frontend, domain) is deliberately **interleav
 
 **Build**
 - LocalStack init script: SNS topic `ore-sim`.
-- `world` package: a scheduler publishes `sim.tick` every 300ms (configurable) using the envelope from `common`.
+- `world` package: a scheduler publishes `sim.tick` every 300ms (configurable) using the envelope from `common`; the envelope's JSON mapping lands here too (Jackson 3, matching the gateway's managed 3.1.4), with a round-trip test.
 - A structured Logback line per tick.
 
 **Primary learning.** SNS publish (fire-and-forget), a scheduled producer, and the LocalStack init script that creates the topic. Bean wiring is already behind you (S1), so this slice is producer code + a config value + one init line.
@@ -57,7 +57,7 @@ Horizontal work (infra, messaging, frontend, domain) is deliberately **interleav
 **Goal.** The `gateway` package subscribes to `ore-sim` via an **SNS HTTP endpoint**, and the same app now *receives* the ticks it publishes. Logs show the full round-trip: publish out, delivery in.
 
 **Build**
-- `gateway` package: an SNS HTTP endpoint (subscription confirmation + delivery handler) that logs each received envelope.
+- `gateway` package: an SNS HTTP endpoint (subscription confirmation + delivery handler) that deserializes the delivery body via the `common` JSON mapping and logs each received envelope.
 - SNS subscription created in the init script (or via the SDK at startup).
 
 **Primary learning.** SNS subscription delivery over an HTTP endpoint: confirmation, then POST deliveries — and what "fire-and-forget plus at-least-once" feels like from the consumer side.
