@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC
+    "-//Checkstyle//DTD SuppressionXpathFilter Configuration 1.2//EN"
+    "https://checkstyle.org/dtds/suppressions_1_2_xpath.dtd">
+<!--
+  Xpath-based Checkstyle suppressions for patterns that cannot be expressed as
+  a simple file/line exclusion (see checkstyle-suppressions.xml). Kept empty on
+  purpose; only add entries with a written justification.
+
+  Entry format (Checkstyle 10+): <suppress-xpath query="...xpath..." checks="..."/>
+-->
+<suppressions>
+</suppressions>

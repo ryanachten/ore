@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC
+    "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+    "https://checkstyle.org/dtds/suppressions_1_2.dtd">
+<!--
+  Project-specific Checkstyle suppressions.
+
+  google_checks.xml (config/checkstyle/checkstyle.xml) is enforced as-is;
+  deviations are intentionally rare and must be justified here. Prefer an
+  in-code `@SuppressWarnings` (or a scoped CHECKSTYLE.OFF/ON pair) over a
+  file-level exclusion wherever the violation is localized.
+-->
+<suppressions>
+</suppressions>

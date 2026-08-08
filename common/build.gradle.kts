@@ -1,4 +1,4 @@
 plugins {
-    id("ore-conventions")
-    id("java-library")
+	id("ore-conventions")
+	id("java-library")
 }

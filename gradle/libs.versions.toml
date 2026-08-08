@@ -2,10 +2,18 @@
 spring-boot = "4.1.0"
 spring-dependency-management = "1.1.7"
 junit-platform = "6.0.3"
+spotless = "8.9.0"
+checkstyle = "13.9.0"
+spotbugs = "4.10.3"
+spotbugs-gradle = "6.5.10"
 
 [libraries]
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junit-platform" }
+spotless-plugin = { module = "com.diffplug.spotless:com.diffplug.spotless.gradle.plugin", version.ref = "spotless" }
+spotbugs-plugin = { module = "com.github.spotbugs:com.github.spotbugs.gradle.plugin", version.ref = "spotbugs-gradle" }
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
 spring-dependency-management = { id = "io.spring.dependency-management", version.ref = "spring-dependency-management" }
+spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
+spotbugs = { id = "com.github.spotbugs", version.ref = "spotbugs-gradle" }
