@@ -1,4 +1,4 @@
-.PHONY: build test
+.PHONY: build test lint lint-fix up down logs
 build:
 	./gradlew build --configuration-cache
 test:

@@ -21,13 +21,13 @@ Horizontal work (infra, messaging, frontend, domain) is deliberately **interleav
 **Build**
 - Gradle Kotlin DSL multi-module: root + `common` (plain JVM library — **no Spring**); `frontend/` is scaffolded in S5.
 - Event envelope in `common`: `{ id, type, tick, source, version, payload }`, `version: 1`. A pure data class for now — JSON mapping lands in S2, where the publish payload gives it something real to map.
-- docker compose: LocalStack (auth token). Postgres 16 and the `ore-sim` topic are added in the slices that first use them (S8 and S2).
+- docker compose: LocalStack (auth token); `localstack/init.sh` seeds the `ore-sim` topic. Postgres 16 lands in S8, the slice that first uses it.
 - `gateway`: the one Spring Boot app. AWS SDK v2 SNS client wired as a bean with the LocalStack endpoint override; actuator `/health`. (Structured Logback defers to S2, where the tick stream gives it something to format.)
 - Makefile: `make up/logs/lint/test`.
 - Tests: `version` defaults to 1; payload is immutable. (The round-trip test moves to S2 with the JSON mapping.)
 - Verify: `make up` → healthy; `make logs` shows a clean start.
 
-**Primary learning.** LocalStack auth (token in compose); your first Spring Boot app and bean wiring (SDK client with endpoint override). The build scaffold and envelope are just the minimum that makes that app runnable — the schema is born here, but it's a data class and a test, not a learning of its own. The init script and its topic defer to S2.
+**Primary learning.** LocalStack auth (token in compose); your first Spring Boot app and bean wiring (SDK client with endpoint override). The build scaffold and envelope are just the minimum that makes that app runnable — the schema is born here, but it's a data class and a test, not a learning of its own. The init script seeds the topic the S2 tick will publish to.
 
 **Deferred.** Publish and the envelope's JSON mapping (S2), subscribe (S3), WebSocket (S4), frontend (S5), Postgres, EventBridge, SQS, Kinesis, entities.
 
@@ -40,11 +40,10 @@ Horizontal work (infra, messaging, frontend, domain) is deliberately **interleav
 **Goal.** The `world` package (still inside the one app) publishes `sim.tick` to SNS every 300ms; `make logs` shows a steady tick stream. Fire-and-forget publishing becomes tangible.
 
 **Build**
-- LocalStack init script: SNS topic `ore-sim`.
-- `world` package: a scheduler publishes `sim.tick` every 300ms (configurable) using the envelope from `common`; the envelope's JSON mapping lands here too (Jackson 3, matching the gateway's managed 3.1.4), with a round-trip test.
+- `world` package: a scheduler publishes `sim.tick` every 300ms (configurable) to the `ore-sim` topic the S1 init script seeded, using the envelope from `common`; the envelope's JSON mapping lands here too (Jackson 3, matching the gateway's managed 3.1.4), with a round-trip test.
 - A structured Logback line per tick.
 
-**Primary learning.** SNS publish (fire-and-forget), a scheduled producer, and the LocalStack init script that creates the topic. Bean wiring is already behind you (S1), so this slice is producer code + a config value + one init line.
+**Primary learning.** SNS publish (fire-and-forget) and a scheduled producer. Bean wiring is already behind you (S1), so this slice is producer code + a config value.
 
 **Deferred.** SNS subscription (S3), WebSocket (S4), frontend (S5), Postgres, EventBridge, SQS, Kinesis, entities.
 
