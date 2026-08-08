@@ -1,31 +1,26 @@
 package com.ryanachten.ore.config;
 
-import java.net.URI;
-import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.services.sns.SnsClient;
 
-/** Immutable binding for the {@code aws.*} configuration properties. */
-@ConfigurationProperties(prefix = "aws")
+/** Configuration for AWS services. */
+@Configuration
+@EnableConfigurationProperties(AwsProperties.class)
 public class AwsConfiguration {
-  private final URI endpointOverride;
-  private final String accessKeyId;
-  private final String secretAccessKeyId;
+  /** Builds an SNS client from the supplied AWS configuration. */
+  @Bean
+  public SnsClient snsClient(AwsProperties props) {
+    var credentialsProvider =
+        StaticCredentialsProvider.create(
+            AwsBasicCredentials.create(props.getAccessKeyId(), props.getSecretAccessKeyId()));
 
-  /** Creates a configuration snapshot from the bound {@code aws.*} properties. */
-  public AwsConfiguration(URI endpointOverride, String accessKeyId, String secretAccessKeyId) {
-    this.endpointOverride = endpointOverride;
-    this.accessKeyId = accessKeyId;
-    this.secretAccessKeyId = secretAccessKeyId;
-  }
-
-  public URI getEndpointOverride() {
-    return endpointOverride;
-  }
-
-  public String getAccessKeyId() {
-    return accessKeyId;
-  }
-
-  public String getSecretAccessKeyId() {
-    return secretAccessKeyId;
+    return SnsClient.builder()
+        .credentialsProvider(credentialsProvider)
+        .endpointOverride(props.getEndpointOverride())
+        .build();
   }
 }
