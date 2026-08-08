@@ -1,7 +1,7 @@
 plugins {
-    id("ore-conventions")
-    alias(libs.plugins.spring.boot)
-    alias(libs.plugins.spring.dependency.management)
+	id("ore-conventions")
+	alias(libs.plugins.spring.boot)
+	alias(libs.plugins.spring.dependency.management)
 }
 
 dependencies {
