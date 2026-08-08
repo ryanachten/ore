@@ -1,12 +1,16 @@
 package com.ryanachten.ore;
 
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * An immutable event envelope exchanged on the event bus.
  *
  * <p>Records the event identity, origin and a free-form payload. The payload is defensively copied
  * into an unmodifiable map on construction and on every read so no caller can mutate event data.
+ * Nested Maps and Lists are recursively copied and frozen as well; other mutable values are stored
+ * by reference.
  *
  * @param id a unique identifier for the event
  * @param type the logical event type name
@@ -22,11 +26,31 @@ public record EventEnvelope(
     if (version == 0) {
       version = 1;
     }
-    payload = Map.copyOf(payload);
+    payload = freeze(payload);
   }
 
   @Override
   public Map<String, Object> payload() {
-    return Map.copyOf(payload);
+    return freeze(payload);
+  }
+
+  private static Map<String, Object> freeze(Map<String, Object> source) {
+    return source.entrySet().stream()
+        .collect(
+            Collectors.toUnmodifiableMap(
+                Map.Entry::getKey, entry -> freezeValue(entry.getValue())));
+  }
+
+  private static Object freezeValue(Object value) {
+    if (value instanceof Map<?, ?> map) {
+      return map.entrySet().stream()
+          .collect(
+              Collectors.toUnmodifiableMap(
+                  Map.Entry::getKey, entry -> freezeValue(entry.getValue())));
+    }
+    if (value instanceof List<?> list) {
+      return list.stream().map(EventEnvelope::freezeValue).toList();
+    }
+    return value;
   }
 }
