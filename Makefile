@@ -1,3 +1,6 @@
+.PHONY: build
+build:
+	./gradlew build --configuration-cache
 up:
 	docker compose up -d
 down:
