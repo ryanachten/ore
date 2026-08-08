@@ -86,3 +86,7 @@ spotless {
         formatAnnotations()
     }
 }
+
+tasks.named("check") {
+    dependsOn("spotlessCheck")
+}
