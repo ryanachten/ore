@@ -1,0 +1,11 @@
+[versions]
+spring-boot = "4.1.0"
+spring-dependency-management = "1.1.7"
+junit-platform = "6.0.3"
+
+[libraries]
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junit-platform" }
+
+[plugins]
+spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
+spring-dependency-management = { id = "io.spring.dependency-management", version.ref = "spring-dependency-management" }
