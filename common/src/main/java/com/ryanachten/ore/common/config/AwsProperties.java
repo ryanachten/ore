@@ -1,4 +1,4 @@
-package com.ryanachten.ore.config;
+package com.ryanachten.ore.common.config;
 
 import java.net.URI;
 import org.springframework.boot.context.properties.ConfigurationProperties;

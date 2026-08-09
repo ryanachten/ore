@@ -1,4 +1,4 @@
-package com.ryanachten.ore.services;
+package com.ryanachten.ore.gateway.services;
 
 import java.util.logging.Logger;
 import org.springframework.stereotype.Service;

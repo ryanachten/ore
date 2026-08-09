@@ -1,19 +1,23 @@
-package com.ryanachten.ore.config;
+package com.ryanachten.ore.common.config;
 
+import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sns.SnsClient;
 
 /** Configuration for AWS services. */
-@Configuration
+@AutoConfiguration
+@ConditionalOnClass(SnsClient.class)
 @EnableConfigurationProperties(AwsProperties.class)
-public class AwsConfiguration {
+public class AwsAutoConfiguration {
   /** Builds an SNS client from the supplied AWS configuration. */
   @Bean
+  @ConditionalOnMissingBean
   public SnsClient snsClient(AwsProperties props) {
     var credentialsProvider =
         StaticCredentialsProvider.create(

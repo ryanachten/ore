@@ -8,6 +8,7 @@ spotbugs = "4.10.3"
 spotbugs-gradle = "6.5.10"
 
 [libraries]
+spring-boot-dependencies = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junit-platform" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit-platform" }
 spotless-plugin = { module = "com.diffplug.spotless:com.diffplug.spotless.gradle.plugin", version.ref = "spotless" }

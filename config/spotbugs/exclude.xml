@@ -12,10 +12,11 @@
   <!--
     EI_EXPOSE_REP2: the constructor stores the injected SnsClient reference
     directly. AWS SDK v2 clients (SnsClient) are immutable and thread-safe by
-    design; there is nothing mutable to defensively copy.
+    design; there is nothing mutable to defensively copy. Applies to the
+    NotificationService in each service module (gateway, world, ...).
   -->
   <Match>
     <Bug pattern="EI_EXPOSE_REP2"/>
-    <Class name="com.ryanachten.ore.services.NotificationService"/>
+    <Class name="~.*NotificationService"/>
   </Match>
 </FindBugsFilter>

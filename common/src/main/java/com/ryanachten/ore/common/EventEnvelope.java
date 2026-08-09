@@ -1,4 +1,4 @@
-package com.ryanachten.ore;
+package com.ryanachten.ore.common;
 
 import java.util.List;
 import java.util.Map;
