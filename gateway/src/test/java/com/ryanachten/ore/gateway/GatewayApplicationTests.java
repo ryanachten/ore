@@ -1,4 +1,4 @@
-package com.ryanachten.ore;
+package com.ryanachten.ore.gateway;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;

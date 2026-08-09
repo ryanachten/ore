@@ -37,13 +37,13 @@ Horizontal work (infra, messaging, frontend, domain) is deliberately **interleav
 
 ## S2 — The clock ticks: publish to SNS
 
-**Goal.** The `world` package (still inside the one app) publishes `sim.tick` to SNS every 300ms; `make logs` shows a steady tick stream. Fire-and-forget publishing becomes tangible.
+**Goal.** A second Spring Boot app — `world` — publishes `sim.tick` to SNS every 300ms; `make logs` shows a steady tick stream. Fire-and-forget publishing becomes tangible.
 
 **Build**
-- `world` package: a scheduler publishes `sim.tick` every 300ms (configurable) to the `ore-sim` topic the S1 init script seeded, using the envelope from `common`; the envelope's JSON mapping lands here too (Jackson 3, matching the gateway's managed 3.1.4), with a round-trip test.
+- `world` module: a second Spring Boot app with a scheduler that publishes `sim.tick` every 300ms (configurable) to the `ore-sim` topic the S1 init script seeded, using the envelope from `common`; the envelope's JSON mapping lands here too (Jackson 3, matching the gateway's managed 3.1.4), with a round-trip test.
 - A structured Logback line per tick.
 
-**Primary learning.** SNS publish (fire-and-forget) and a scheduled producer. Bean wiring is already behind you (S1), so this slice is producer code + a config value.
+**Primary learning.** SNS publish (fire-and-forget) and a scheduled producer. Bean wiring reuses the S1 pattern, now applied to a second app, so this slice is producer code + a config value.
 
 **Deferred.** SNS subscription (S3), WebSocket (S4), frontend (S5), Postgres, EventBridge, SQS, Kinesis, entities.
 
@@ -53,7 +53,7 @@ Horizontal work (infra, messaging, frontend, domain) is deliberately **interleav
 
 ## S3 — The subscription: the wire crosses the broker
 
-**Goal.** The `gateway` package subscribes to `ore-sim` via an **SNS HTTP endpoint**, and the same app now *receives* the ticks it publishes. Logs show the full round-trip: publish out, delivery in.
+**Goal.** `gateway` subscribes to `ore-sim` via an **SNS HTTP endpoint** and now *receives* the ticks `world` publishes. Logs show the full round-trip across two apps: publish out, delivery in.
 
 **Build**
 - `gateway` package: an SNS HTTP endpoint (subscription confirmation + delivery handler) that deserializes the delivery body via the `common` JSON mapping and logs each received envelope.
@@ -63,7 +63,7 @@ Horizontal work (infra, messaging, frontend, domain) is deliberately **interleav
 
 **Deferred.** WebSocket broadcast (S4), frontend (S5), Postgres, EventBridge, SQS, Kinesis, entities.
 
-**Done when.** `make logs` shows outbound publishes *and* inbound deliveries of the same `sim.tick` envelopes.
+**Done when.** `make logs` shows `world` publishing and `gateway` delivering the same `sim.tick` envelopes.
 
 ---
 
@@ -93,7 +93,7 @@ Horizontal work (infra, messaging, frontend, domain) is deliberately **interleav
 
 **Primary learning.** A raw WebSocket client in React — and the first full-stack loop you can watch with your eyes.
 
-**Deferred.** Postgres, EventBridge, SQS, Kinesis, all entity logic, and splitting `world` out of `gateway` into its own module (S9).
+**Deferred.** Postgres, EventBridge, SQS, Kinesis, all entity logic.
 
 **Done when.** `make up` → browser shows a ticking counter; `make lint test` green; logs show a steady tick stream.
 
@@ -161,14 +161,14 @@ Horizontal work (infra, messaging, frontend, domain) is deliberately **interleav
 **Goal.** Dispatch the prospector to scan; on completion a deposit node appears on the map with a richness estimate. `world` is now a first-class participant that *reacts to facts*.
 
 **Build**
-- `world`: **split out of the `gateway` app into its own module** here (it gains Postgres + a Kinesis consumer, so it's now a real service); Flyway + Postgres `deposits`; seeds the terrain deterministically at startup; emits `deposit.seeded` facts (direct put for now — outbox is S11).
+- `world`: **a stateful service from here on** — it gains Postgres + a Kinesis consumer (until now it was just a tick clock); Flyway + Postgres `deposits`; seeds the terrain deterministically at startup; emits `deposit.seeded` facts (direct put for now — outbox is S11).
 - `prospector`: scan step is a tick-countdown; emits `scan.completed` (location + radius).
 - `world` becomes a second Kinesis consumer: reacts to `scan.completed` → emits `deposit.discovered` (deposits within radius, with estimates).
 - `gateway`: `deposits` projection; map renders deposit markers (colored by richness).
 - `frontend`: deposit markers, "scanning" indicator.
 - Envelope note: adding new fact `type`s is the first real **schema evolution** — keep payload parsing tolerant.
 
-**Primary learning.** Event-driven collaboration between services (world reacts to a fact a vehicle published); multiple independent consumers of one stream (world + gateway each own their iterator); schema evolution.
+**Primary learning.** Event-driven collaboration between services (world reacts to a fact a vehicle published); multiple independent consumers of one stream (world + gateway each own their iterator); a service growing state + responsibilities; schema evolution.
 
 **Deferred.** Extraction, fuel, base, outbox.
 

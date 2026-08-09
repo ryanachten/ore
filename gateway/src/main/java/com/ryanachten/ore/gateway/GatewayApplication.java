@@ -1,12 +1,10 @@
-package com.ryanachten.ore;
+package com.ryanachten.ore.gateway;
 
-import com.ryanachten.ore.services.NotificationService;
+import com.ryanachten.ore.gateway.services.NotificationService;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 
 /** Spring Boot entry point for the gateway service. */
-@ConfigurationPropertiesScan
 @SpringBootApplication
 public class GatewayApplication {
 
