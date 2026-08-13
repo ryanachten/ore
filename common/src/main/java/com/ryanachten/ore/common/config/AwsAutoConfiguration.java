@@ -29,4 +29,11 @@ public class AwsAutoConfiguration {
         .endpointOverride(props.getEndpointOverride())
         .build();
   }
+
+  /** Resolves SNS topic ARNs by name. */
+  @Bean
+  @ConditionalOnMissingBean
+  public SnsTopicResolver snsTopicResolver(SnsClient snsClient) {
+    return new SnsTopicResolver(snsClient);
+  }
 }
