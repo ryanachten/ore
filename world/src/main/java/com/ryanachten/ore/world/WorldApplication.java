@@ -1,21 +1,16 @@
 package com.ryanachten.ore.world;
 
-import com.ryanachten.ore.world.services.NotificationService;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /** Spring Boot entry point for the world service. */
 @SpringBootApplication
+@EnableScheduling
 public class WorldApplication {
 
-  /**
-   * Starts the world application context.
-   *
-   * <p>TODO: replace the smoke-test call with a controller layer that reacts to incoming events.
-   */
+  /** Starts the world application context. */
   public static void main(String[] args) {
-    var ctx = SpringApplication.run(WorldApplication.class, args);
-    var notificationService = ctx.getBean(NotificationService.class);
-    notificationService.listTopics();
+    SpringApplication.run(WorldApplication.class, args);
   }
 }

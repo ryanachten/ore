@@ -2,6 +2,7 @@ package com.ryanachten.ore.common;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -20,7 +21,7 @@ import java.util.stream.Collectors;
  * @param payload the event data, stored as an unmodifiable map
  */
 public record EventEnvelope(
-    String id, String type, long tick, String source, int version, Map<String, Object> payload) {
+    UUID id, String type, long tick, String source, int version, Map<String, Object> payload) {
   /** Applies defaults and takes a defensive immutable copy of the payload. */
   public EventEnvelope {
     if (version == 0) {
