@@ -7,7 +7,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.logging.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.services.sns.SnsClient;
@@ -19,6 +20,7 @@ import tools.jackson.databind.ObjectMapper;
 /** Publishes the global {@code sim.tick} clock event on a fixed schedule. */
 @Service
 public class TickScheduler {
+  private static final Logger logger = LoggerFactory.getLogger(TickScheduler.class);
   private static final String TOPIC_NAME = "ore-sim";
   private static final String SOURCE = "world";
   private static final String EVENT_TYPE = EventType.SIM_TICK;
@@ -26,8 +28,6 @@ public class TickScheduler {
   private final SnsClient snsClient;
   private final SnsTopicResolver snsTopicResolver;
   private final ObjectMapper objectMapper;
-
-  private static final Logger logger = Logger.getLogger(TickScheduler.class.getName());
   private final AtomicLong tickCount = new AtomicLong(1);
 
   /** Creates the tick publisher with the SNS client, topic resolver and JSON mapper. */
@@ -67,7 +67,7 @@ public class TickScheduler {
           "Failed to publish tick: " + e.awsErrorDetails().errorMessage(), e);
     }
 
-    logger.info("Published tick: " + tickCount);
+    logger.info("Published tick {}", tickCount.get());
 
     tickCount.getAndIncrement();
   }
