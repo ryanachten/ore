@@ -1,4 +1,18 @@
 services:
+  world:
+    build: ./world
+    environment:
+      - AWS_ENDPOINT_OVERRIDE=http://localstack:4566
+    depends_on:
+      localstack:
+        condition: service_healthy
+  gateway:
+    build: ./gateway
+    environment:
+      - AWS_ENDPOINT_OVERRIDE=http://localstack:4566
+    depends_on:
+      localstack:
+        condition: service_healthy
   localstack:
     container_name: localstack
     image: localstack/localstack
@@ -8,5 +22,11 @@ services:
       - '127.0.0.1:443:443' # LocalStack HTTPS Gateway
     environment:
       - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN:?} # required for Pro
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -s http://localhost:4566/_localstack/init/ready | grep -q '\"completed\":[[:space:]]*true'" ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
     volumes:
       - ./localstack/init.sh:/etc/localstack/init/ready.d/init-aws.sh

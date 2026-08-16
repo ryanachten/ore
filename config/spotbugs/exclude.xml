@@ -12,10 +12,33 @@
   <!--
     EI_EXPOSE_REP2: the constructor stores the injected SnsClient reference
     directly. AWS SDK v2 clients (SnsClient) are immutable and thread-safe by
-    design; there is nothing mutable to defensively copy.
+    design; there is nothing mutable to defensively copy. Applies to the
+    NotificationService in each service module (gateway, world, ...).
   -->
   <Match>
     <Bug pattern="EI_EXPOSE_REP2"/>
-    <Class name="com.ryanachten.ore.services.NotificationService"/>
+    <Class name="~.*NotificationService"/>
+  </Match>
+
+  <!--
+    EI_EXPOSE_REP2: the constructor stores the injected SnsClient reference
+    directly. AWS SDK v2 clients are immutable and thread-safe by design; there
+    is nothing mutable to defensively copy. Applies to the SnsTopicResolver in
+    the common module, which is a stateless ARN resolver wrapping the client.
+  -->
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+    <Class name="~.*SnsTopicResolver"/>
+  </Match>
+
+  <!--
+    EI_EXPOSE_REP2: the constructor stores injected SnsClient and ObjectMapper
+    references directly. SnsClient is an immutable AWS SDK v2 client, and the
+    tools.jackson ObjectMapper is thread-safe once configured; both are standard
+    Spring singleton-DI patterns with nothing mutable to defensively copy.
+  -->
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+    <Class name="~.*TickScheduler"/>
   </Match>
 </FindBugsFilter>
