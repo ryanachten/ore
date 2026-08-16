@@ -1,6 +1,7 @@
 package com.ryanachten.ore.gateway.services;
 
-import java.util.logging.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.services.sns.SnsClient;
 import software.amazon.awssdk.services.sns.model.SnsException;
@@ -8,8 +9,8 @@ import software.amazon.awssdk.services.sns.model.SnsException;
 /** Publishes and queries notifications through AWS SNS. */
 @Service
 public class NotificationService {
+  private static final Logger logger = LoggerFactory.getLogger(NotificationService.class);
   private final SnsClient snsClient;
-  private static final Logger logger = Logger.getLogger(NotificationService.class.getName());
 
   /** Service for dispatching notifications. */
   public NotificationService(SnsClient snsClient) {
@@ -22,7 +23,7 @@ public class NotificationService {
       var listTopics = snsClient.listTopicsPaginator();
       listTopics.stream()
           .flatMap(r -> r.topics().stream())
-          .forEach(content -> logger.info(" Topic ARN: " + content.topicArn()));
+          .forEach(content -> logger.info("Topic ARN {}", content.topicArn()));
 
     } catch (SnsException e) {
       throw new IllegalStateException(
