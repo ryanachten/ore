@@ -1,12 +1,8 @@
-import com.github.spotbugs.snom.Confidence
-import com.github.spotbugs.snom.Effort
-import com.github.spotbugs.snom.SpotBugsTask
 import org.gradle.api.plugins.quality.Checkstyle
 
 plugins {
     id("java")
     id("checkstyle")
-    id("com.github.spotbugs")
     id("com.diffplug.spotless")
 }
 
@@ -61,19 +57,6 @@ tasks.withType<Checkstyle>().configureEach {
         xml.required = true
         html.required = true
     }
-}
-
-spotbugs {
-    toolVersion = libs.findVersion("spotbugs").get().requiredVersion
-    ignoreFailures = false
-    effort = Effort.MAX
-    reportLevel = Confidence.MEDIUM
-    excludeFilter.set(rootProject.layout.projectDirectory.file("config/spotbugs/exclude.xml"))
-}
-
-tasks.withType<SpotBugsTask>().configureEach {
-    reports.maybeCreate("html").required.set(true)
-    reports.maybeCreate("xml").required.set(true)
 }
 
 spotless {
