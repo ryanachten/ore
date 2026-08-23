@@ -2,6 +2,7 @@ package com.ryanachten.ore.world.services;
 
 import com.ryanachten.ore.common.EventEnvelope;
 import com.ryanachten.ore.common.EventType;
+import com.ryanachten.ore.common.SnsTopics;
 import com.ryanachten.ore.common.config.SnsTopicResolver;
 import java.util.HashMap;
 import java.util.Map;
@@ -21,7 +22,6 @@ import tools.jackson.databind.ObjectMapper;
 @Service
 public class TickScheduler {
   private static final Logger logger = LoggerFactory.getLogger(TickScheduler.class);
-  private static final String TOPIC_NAME = "ore-sim";
   private static final String SOURCE = "world";
   private static final String EVENT_TYPE = EventType.SIM_TICK;
 
@@ -57,7 +57,7 @@ public class TickScheduler {
         PublishRequest.builder()
             .messageAttributes(msgAttributes)
             .message(jsonPayload)
-            .topicArn(snsTopicResolver.resolve(TOPIC_NAME))
+            .topicArn(snsTopicResolver.resolve(SnsTopics.ORE_SIM))
             .build();
 
     try {
