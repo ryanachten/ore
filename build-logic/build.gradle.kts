@@ -9,7 +9,6 @@ repositories {
 
 dependencies {
     implementation(libs.spotless.plugin)
-    implementation(libs.spotbugs.plugin)
 }
 
 spotless {
