@@ -31,7 +31,6 @@ public class TickSubscriptionService {
     this.snsTopicResolver = snsTopicResolver;
   }
 
-  /** Registers an HTTP subscription endpoint for SIM tick events with SNS. */
   @EventListener(WebServerInitializedEvent.class)
   public void registerSubscription() {
     var topicArn = snsTopicResolver.resolve(SnsTopics.ORE_SIM);
@@ -46,7 +45,6 @@ public class TickSubscriptionService {
     snsClient.subscribe(request);
   }
 
-  /** Send GET request to subscription URL to confirm subscription * */
   public void confirmSubscription(String topicArn, String token, String subscriptionUrl) {
     var request = ConfirmSubscriptionRequest.builder().topicArn(topicArn).token(token).build();
 

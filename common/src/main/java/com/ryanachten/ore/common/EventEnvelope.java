@@ -6,12 +6,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * An immutable event envelope exchanged on the event bus.
- *
- * <p>Records the event identity, origin and a free-form payload. The payload is defensively copied
- * into an unmodifiable map on construction and on every read so no caller can mutate event data.
- * Nested Maps and Lists are recursively copied and frozen as well; other mutable values are stored
- * by reference.
+ * Event envelope exchanged on the event bus.
  *
  * @param id a unique identifier for the event
  * @param type the logical event type name
@@ -22,7 +17,6 @@ import java.util.stream.Collectors;
  */
 public record EventEnvelope(
     UUID id, String type, long tick, String source, int version, Map<String, Object> payload) {
-  /** Applies defaults and takes a defensive immutable copy of the payload. */
   public EventEnvelope {
     if (version == 0) {
       version = 1;
