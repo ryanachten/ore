@@ -1,5 +1,5 @@
 .PHONY: build test lint lint-fix up down logs
-build:
+build: lint-fix
 	./gradlew build --configuration-cache
 test:
 	./gradlew test --configuration-cache

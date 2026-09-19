@@ -30,7 +30,6 @@ public class TickScheduler {
   private final ObjectMapper objectMapper;
   private final AtomicLong tickCount = new AtomicLong(1);
 
-  /** Creates the tick publisher with the SNS client, topic resolver and JSON mapper. */
   public TickScheduler(
       SnsClient snsClient, SnsTopicResolver snsTopicResolver, ObjectMapper objectMapper) {
     this.snsClient = snsClient;
@@ -38,7 +37,6 @@ public class TickScheduler {
     this.objectMapper = objectMapper;
   }
 
-  /** Publishes the next tick as an envelope with an incrementing tick number. */
   @Scheduled(fixedDelayString = "${tick.rate}")
   public void tick() {
     var version = 1;
