@@ -4,11 +4,13 @@ import com.ryanachten.ore.common.EventEnvelope;
 import com.ryanachten.ore.gateway.services.TickSubscriptionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.ObjectMapper;
 
 @RestController
@@ -37,7 +39,11 @@ public class TickController {
         var token = payload.get("Token").asString();
         var topicArn = payload.get("TopicArn").asString();
         var subscriptionUrl = payload.get("SubscribeURL").asString();
-        tickSubscriptionService.confirmSubscription(topicArn, token, subscriptionUrl);
+        try {
+          tickSubscriptionService.confirmSubscription(topicArn, token, subscriptionUrl);
+        } catch (IllegalArgumentException ex) {
+          throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
+        }
         break;
       case "Notification":
         var message = payload.get("Message");
