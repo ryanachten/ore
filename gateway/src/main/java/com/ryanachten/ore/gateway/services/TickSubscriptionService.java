@@ -17,7 +17,7 @@ import tools.jackson.databind.ObjectMapper;
 public class TickSubscriptionService {
   private static final Logger log = LoggerFactory.getLogger(TickSubscriptionService.class);
   private final SnsClient snsClient;
-  private final SnsTopicResolver snsTopicResolver;
+  private final String topicArn;
 
   @Value("${gateway.host.uri}")
   private String gatewayHostUri;
@@ -28,13 +28,11 @@ public class TickSubscriptionService {
   public TickSubscriptionService(
       SnsClient snsClient, SnsTopicResolver snsTopicResolver, ObjectMapper objectMapper) {
     this.snsClient = snsClient;
-    this.snsTopicResolver = snsTopicResolver;
+    this.topicArn = snsTopicResolver.resolve(SnsTopics.ORE_SIM);
   }
 
   @EventListener(WebServerInitializedEvent.class)
   public void registerSubscription() {
-    var topicArn = snsTopicResolver.resolve(SnsTopics.ORE_SIM);
-
     var request =
         SubscribeRequest.builder()
             .topicArn(topicArn)
@@ -45,7 +43,14 @@ public class TickSubscriptionService {
     snsClient.subscribe(request);
   }
 
-  public void confirmSubscription(String topicArn, String token, String subscriptionUrl) {
+  public void confirmSubscription(String topicArn, String token, String subscriptionUrl)
+      throws IllegalArgumentException {
+
+    if (!topicArn.equals(this.topicArn)) {
+      throw new IllegalArgumentException(
+          "Invalid topic ARN provided in confirmation request: " + topicArn);
+    }
+
     var request = ConfirmSubscriptionRequest.builder().topicArn(topicArn).token(token).build();
 
     snsClient.confirmSubscription(request);
