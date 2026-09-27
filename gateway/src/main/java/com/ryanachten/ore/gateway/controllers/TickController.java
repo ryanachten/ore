@@ -1,6 +1,6 @@
 package com.ryanachten.ore.gateway.controllers;
 
-import com.ryanachten.ore.common.EventEnvelope;
+import com.ryanachten.ore.gateway.services.SocketConnectionHandler;
 import com.ryanachten.ore.gateway.services.TickSubscriptionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,11 +20,15 @@ public class TickController {
   private static final Logger log = LoggerFactory.getLogger(TickController.class);
   private final TickSubscriptionService tickSubscriptionService;
   private final ObjectMapper objectMapper;
+  private final SocketConnectionHandler socketConnectionHandler;
 
   public TickController(
-      ObjectMapper objectMapper, TickSubscriptionService tickSubscriptionService) {
-    this.tickSubscriptionService = tickSubscriptionService;
+      ObjectMapper objectMapper,
+      TickSubscriptionService tickSubscriptionService,
+      SocketConnectionHandler socketConnectionHandler) {
     this.objectMapper = objectMapper;
+    this.tickSubscriptionService = tickSubscriptionService;
+    this.socketConnectionHandler = socketConnectionHandler;
   }
 
   @PostMapping("/subscription")
@@ -47,8 +51,7 @@ public class TickController {
         break;
       case "Notification":
         var message = payload.get("Message");
-        var event = objectMapper.readValue(message.stringValue(), EventEnvelope.class);
-        log.info("Received tick event: {}", event.tick());
+        socketConnectionHandler.broadcastEvent(message.stringValue());
         break;
       case "UnsubscribeConfirmation":
         log.info("Tick unsubscribed");
