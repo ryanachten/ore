@@ -13,15 +13,13 @@ import com.ryanachten.ore.common.EventEnvelope;
 import com.ryanachten.ore.common.EventType;
 import com.ryanachten.ore.common.SnsTopics;
 import com.ryanachten.ore.common.config.SnsTopicResolver;
+import com.ryanachten.ore.gateway.services.SocketConnectionHandler;
 import com.ryanachten.ore.gateway.services.TickSubscriptionService;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.springframework.boot.test.system.CapturedOutput;
-import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -29,7 +27,6 @@ import software.amazon.awssdk.services.sns.SnsClient;
 import software.amazon.awssdk.services.sns.model.ConfirmSubscriptionRequest;
 import tools.jackson.databind.ObjectMapper;
 
-@ExtendWith(OutputCaptureExtension.class)
 class TickControllerTest {
 
   private static final String EXPECTED_ARN = "arn:aws:sns:us-east-1:000000000000:ore-sim";
@@ -40,11 +37,13 @@ class TickControllerTest {
   private final ObjectMapper objectMapper = new ObjectMapper();
 
   private SnsClient snsClient;
+  private SocketConnectionHandler socketConnectionHandler;
   private MockMvc mockMvc;
 
   @BeforeEach
   void setUp() {
     snsClient = mock(SnsClient.class);
+    socketConnectionHandler = mock(SocketConnectionHandler.class);
 
     var snsTopicResolver = mock(SnsTopicResolver.class);
     when(snsTopicResolver.resolve(SnsTopics.ORE_SIM)).thenReturn(EXPECTED_ARN);
@@ -53,7 +52,8 @@ class TickControllerTest {
         new TickSubscriptionService(snsClient, snsTopicResolver, objectMapper);
 
     mockMvc =
-        MockMvcBuilders.standaloneSetup(new TickController(objectMapper, tickSubscriptionService))
+        MockMvcBuilders.standaloneSetup(
+                new TickController(objectMapper, tickSubscriptionService, socketConnectionHandler))
             .build();
   }
 
@@ -105,24 +105,8 @@ class TickControllerTest {
   }
 
   @Test
-  void notificationDeserializesMessageIntoEventEnvelope(CapturedOutput output) throws Exception {
-    var envelope =
-        new EventEnvelope(
-            UUID.fromString("e7c5f4c0-0000-4000-8000-000000000001"),
-            EventType.SIM_TICK,
-            42L,
-            "world",
-            1,
-            Map.of("seed", 7));
-    String envelopeJson = objectMapper.writeValueAsString(envelope);
-
-    String body =
-        objectMapper
-            .createObjectNode()
-            .put("Type", "Notification")
-            .put("TopicArn", EXPECTED_ARN)
-            .put("Message", envelopeJson)
-            .toString();
+  void notificationForwardsTheSnsMessageBodyUnchanged() throws Exception {
+    String body = notificationBody(envelopeJson(42L));
 
     mockMvc
         .perform(
@@ -132,6 +116,67 @@ class TickControllerTest {
                 .content(body))
         .andExpect(status().isOk());
 
-    assertThat(output.getAll()).contains("Received tick event: 42");
+    verify(socketConnectionHandler).broadcastEvent(envelopeJson(42L));
+  }
+
+  @Test
+  void notificationIsBroadcastWithoutValidatingItIsAnEnvelope() throws Exception {
+    // The gateway is deliberately a transparent pipe: it does not parse the SNS
+    // message body, so anything delivered on the topic reaches clients verbatim.
+    // This pins that decision - it should change deliberately, not by accident.
+    String body = notificationBody("not-an-envelope");
+
+    mockMvc
+        .perform(
+            post("/tick/subscription")
+                .header("x-amz-sns-message-type", "Notification")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+        .andExpect(status().isOk());
+
+    verify(socketConnectionHandler).broadcastEvent("not-an-envelope");
+  }
+
+  @Test
+  void unsubscribeConfirmationIsAcknowledged() throws Exception {
+    String body =
+        objectMapper
+            .createObjectNode()
+            .put("Type", "UnsubscribeConfirmation")
+            .put("TopicArn", EXPECTED_ARN)
+            .toString();
+
+    mockMvc
+        .perform(
+            post("/tick/subscription")
+                .header("x-amz-sns-message-type", "UnsubscribeConfirmation")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+        .andExpect(status().isOk());
+
+    verify(socketConnectionHandler, never()).broadcastEvent(any());
+  }
+
+  private String envelopeJson(long tick) throws Exception {
+    return objectMapper.writeValueAsString(tickEnvelope(tick));
+  }
+
+  private EventEnvelope tickEnvelope(long tick) {
+    return new EventEnvelope(
+        UUID.fromString("e7c5f4c0-0000-4000-8000-000000000001"),
+        EventType.SIM_TICK,
+        tick,
+        "world",
+        1,
+        Map.of("seed", 7));
+  }
+
+  private String notificationBody(String snsMessage) {
+    return objectMapper
+        .createObjectNode()
+        .put("Type", "Notification")
+        .put("TopicArn", EXPECTED_ARN)
+        .put("Message", snsMessage)
+        .toString();
   }
 }
