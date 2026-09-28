@@ -69,17 +69,18 @@ Horizontal work (infra, messaging, frontend, domain) is deliberately **interleav
 
 ## S4 — The broadcast: WebSocket server
 
-**Goal.** A Spring WebSocket server pushes each received envelope to connected clients; a ~10-line client script proves delivery. The wire is now complete from scheduler to WebSocket — only the browser is missing.
+**Goal.** A Spring WebSocket server pushes each received envelope to connected clients. The wire is now complete from scheduler to WebSocket — only the browser is missing.
 
 **Build**
 - Spring WebSocket endpoint (`/ws`): a `WebSocketHandler` that broadcasts envelopes to connected sessions; connect/disconnect log lines.
-- Verify: a tiny WS client script connects and prints envelopes as they arrive.
+- The gateway broadcasts the SNS `Message` body verbatim — no envelope parse, so the wire format stays `world`'s. The parse arrives in S6, where facts are folded into the world view.
+- Verify: `websocat ws://localhost:8080/ws` against `make up`. No throwaway client script here — the real client lands in S5.
 
 **Primary learning.** Spring WebSocket server: endpoint config, a handler bean, session lifecycle.
 
 **Deferred.** Frontend (S5), Postgres, EventBridge, SQS, Kinesis, entities.
 
-**Done when.** A connected client receives a stream of `sim.tick` envelopes while `make up` runs.
+**Done when.** A connected client (`websocat`) receives a stream of `sim.tick` envelopes while `make up` runs.
 
 ---
 
