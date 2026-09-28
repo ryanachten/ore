@@ -15,9 +15,9 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 @Component
 public class SocketConnectionHandler extends TextWebSocketHandler {
   private static final Logger log = LoggerFactory.getLogger(SocketConnectionHandler.class);
-  private final Map<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
-  private static final int SEND_TIME_LIMIT_MS = 10 * 1000;
+  private static final int SEND_TIME_LIMIT_MS = 10 * 1000; // 1000 MS
   private static final int BUFFER_SIZE_LIMIT_BYTES = 512 * 1024; // 512 KB
+  private final Map<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
 
   @Override
   public void afterConnectionEstablished(@NonNull WebSocketSession session) throws Exception {
