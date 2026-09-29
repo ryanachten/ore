@@ -15,3 +15,5 @@ down:
 	docker compose down
 logs:
 	docker compose logs
+run-frontend:
+	bun --cwd frontend dev --open
