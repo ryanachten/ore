@@ -9,12 +9,13 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build & Test
+  backend:
+    name: Backend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
+          # spotless ratchets from origin/main, so the full history is required.
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-java@v4
@@ -22,5 +23,32 @@ jobs:
           distribution: temurin
           java-version: '25'
       - uses: gradle/actions/setup-gradle@v4
+      - name: Lint
+        run: make lint-backend
       - name: Build & Test
-        run: make build
+        run: make build-backend
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: frontend/.bun-version
+      - name: Cache bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('frontend/bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+      - name: Install
+        run: make install-frontend
+      - name: Lint
+        run: make lint-frontend
+      - name: Test
+        run: make test-frontend
+      - name: Build
+        run: make build-frontend
