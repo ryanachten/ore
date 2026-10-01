@@ -1,6 +1,16 @@
-.PHONY: build test test-backend test-frontend lint lint-backend lint-frontend lint-fix lint-fix-backend lint-fix-frontend up down logs run-frontend
+GRADLE_BUILD = ./gradlew build --configuration-cache
+
+.PHONY: build build-backend build-frontend install-frontend verify test test-backend test-frontend lint lint-backend lint-frontend lint-fix lint-fix-backend lint-fix-frontend up down logs run-frontend
 build: lint-fix
-	./gradlew build --configuration-cache
+	$(GRADLE_BUILD)
+build-backend:
+	$(GRADLE_BUILD)
+build-frontend:
+	cd frontend && bun run build
+install-frontend:
+	cd frontend && bun install --frozen-lockfile
+verify: lint test build-frontend
+	$(GRADLE_BUILD)
 test: test-backend test-frontend
 test-backend:
 	./gradlew test --configuration-cache
