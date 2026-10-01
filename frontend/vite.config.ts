@@ -1,7 +1,6 @@
-import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vitest/config";
 
-// https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -9,8 +8,12 @@ export default defineConfig({
       "/ws": {
         target: "ws://localhost:8080",
         ws: true,
-        rewriteWsOrigin: true
-      }
-    }
-  }
-})
+        rewriteWsOrigin: true,
+      },
+    },
+  },
+  test: {
+    environment: "jsdom",
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+  },
+});
