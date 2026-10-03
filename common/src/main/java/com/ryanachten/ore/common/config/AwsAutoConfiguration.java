@@ -19,12 +19,12 @@ public class AwsAutoConfiguration {
   public SnsClient snsClient(AwsProperties props) {
     var credentialsProvider =
         StaticCredentialsProvider.create(
-            AwsBasicCredentials.create(props.getAccessKeyId(), props.getSecretAccessKeyId()));
+            AwsBasicCredentials.create(props.accessKeyId(), props.secretAccessKeyId()));
 
     return SnsClient.builder()
         .credentialsProvider(credentialsProvider)
-        .region(Region.of(props.getRegion()))
-        .endpointOverride(props.getEndpointOverride())
+        .region(Region.of(props.region()))
+        .endpointOverride(props.endpointOverride())
         .build();
   }
 

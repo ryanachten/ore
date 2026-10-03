@@ -1,36 +1,14 @@
 package com.ryanachten.ore.common.config;
 
+import jakarta.validation.constraints.NotBlank;
 import java.net.URI;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.validation.annotation.Validated;
 
+@Validated
 @ConfigurationProperties(prefix = "aws")
-public class AwsProperties {
-  private final URI endpointOverride;
-  private final String region;
-  private final String accessKeyId;
-  private final String secretAccessKeyId;
-
-  public AwsProperties(
-      URI endpointOverride, String region, String accessKeyId, String secretAccessKeyId) {
-    this.endpointOverride = endpointOverride;
-    this.region = region;
-    this.accessKeyId = accessKeyId;
-    this.secretAccessKeyId = secretAccessKeyId;
-  }
-
-  public URI getEndpointOverride() {
-    return endpointOverride;
-  }
-
-  public String getRegion() {
-    return region;
-  }
-
-  public String getAccessKeyId() {
-    return accessKeyId;
-  }
-
-  public String getSecretAccessKeyId() {
-    return secretAccessKeyId;
-  }
-}
+public record AwsProperties(
+    @NotBlank String region,
+    @NotBlank String accessKeyId,
+    @NotBlank String secretAccessKeyId,
+    URI endpointOverride) {}
