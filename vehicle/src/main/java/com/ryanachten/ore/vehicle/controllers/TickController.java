@@ -1,8 +1,8 @@
 package com.ryanachten.ore.gateway.controllers;
 
+import com.ryanachten.ore.common.config.SnsTopicResolver;
 import com.ryanachten.ore.common.models.SnsTopics;
 import com.ryanachten.ore.common.services.SnsSubscriptionService;
-import com.ryanachten.ore.common.services.SnsTopicResolver;
 import com.ryanachten.ore.gateway.services.SocketConnectionHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,24 +22,33 @@ import tools.jackson.databind.ObjectMapper;
 @RestController
 @RequestMapping("/tick")
 public class TickController {
+
+  @Value("${gateway.host.uri}")
+  private String gatewayHostUri;
+
+  @Value("${gateway.host.protocol}")
+  private String protocol;
+
   private static final Logger log = LoggerFactory.getLogger(TickController.class);
   private final SnsSubscriptionService snsSubscriptionService;
   private final ObjectMapper objectMapper;
   private final SocketConnectionHandler socketConnectionHandler;
 
   public TickController(
-      ObjectMapper objectMapper,
-      SocketConnectionHandler socketConnectionHandler,
-      SnsClient snsClient,
-      SnsTopicResolver snsTopicResolver,
-      @Value("${gateway.host.uri}") String hostUri,
-      @Value("${gateway.host.protocol}") String protocol) {
+          ObjectMapper objectMapper,
+          SocketConnectionHandler socketConnectionHandler,
+          SnsClient snsClient,
+          SnsTopicResolver snsTopicResolver) {
 
     var topicArn = snsTopicResolver.resolve(SnsTopics.ORE_SIM);
+    var snsSubscriptionService = new SnsSubscriptionService(
+            snsClient,
+            topicArn,
+            protocol,
+            gatewayHostUri + "/tick/subscription");
 
     this.objectMapper = objectMapper;
-    this.snsSubscriptionService =
-        new SnsSubscriptionService(snsClient, topicArn, protocol, hostUri + "/tick/subscription");
+    this.snsSubscriptionService = snsSubscriptionService;
     this.socketConnectionHandler = socketConnectionHandler;
   }
 

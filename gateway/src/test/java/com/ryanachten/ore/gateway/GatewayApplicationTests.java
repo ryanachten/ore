@@ -1,6 +1,6 @@
 package com.ryanachten.ore.gateway;
 
-import com.ryanachten.ore.common.config.SnsTopicResolver;
+import com.ryanachten.ore.common.services.SnsTopicResolver;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
