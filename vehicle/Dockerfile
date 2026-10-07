@@ -1,6 +1,6 @@
 FROM eclipse-temurin:25-jre AS builder
 WORKDIR /app
-ARG JAR_FILE=build/libs/gateway-0.0.1-SNAPSHOT.jar
+ARG JAR_FILE=build/libs/vehicle-0.0.1-SNAPSHOT.jar
 COPY ${JAR_FILE} app.jar
 RUN java -Djarmode=tools -jar app.jar extract --layers --launcher --destination /app/layers
 
