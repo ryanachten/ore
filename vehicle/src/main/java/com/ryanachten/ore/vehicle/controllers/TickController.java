@@ -1,9 +1,8 @@
-package com.ryanachten.ore.gateway.controllers;
+package com.ryanachten.ore.vehicle.controllers;
 
-import com.ryanachten.ore.common.config.SnsTopicResolver;
 import com.ryanachten.ore.common.models.SnsTopics;
 import com.ryanachten.ore.common.services.SnsSubscriptionService;
-import com.ryanachten.ore.gateway.services.SocketConnectionHandler;
+import com.ryanachten.ore.common.services.SnsTopicResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,34 +21,22 @@ import tools.jackson.databind.ObjectMapper;
 @RestController
 @RequestMapping("/tick")
 public class TickController {
-
-  @Value("${gateway.host.uri}")
-  private String gatewayHostUri;
-
-  @Value("${gateway.host.protocol}")
-  private String protocol;
-
   private static final Logger log = LoggerFactory.getLogger(TickController.class);
   private final SnsSubscriptionService snsSubscriptionService;
   private final ObjectMapper objectMapper;
-  private final SocketConnectionHandler socketConnectionHandler;
 
   public TickController(
-          ObjectMapper objectMapper,
-          SocketConnectionHandler socketConnectionHandler,
-          SnsClient snsClient,
-          SnsTopicResolver snsTopicResolver) {
+      ObjectMapper objectMapper,
+      SnsClient snsClient,
+      SnsTopicResolver snsTopicResolver,
+      @Value("${vehicle.host.uri}") String hostUri,
+      @Value("${vehicle.host.protocol}") String protocol) {
 
     var topicArn = snsTopicResolver.resolve(SnsTopics.ORE_SIM);
-    var snsSubscriptionService = new SnsSubscriptionService(
-            snsClient,
-            topicArn,
-            protocol,
-            gatewayHostUri + "/tick/subscription");
 
     this.objectMapper = objectMapper;
-    this.snsSubscriptionService = snsSubscriptionService;
-    this.socketConnectionHandler = socketConnectionHandler;
+    this.snsSubscriptionService =
+        new SnsSubscriptionService(snsClient, topicArn, protocol, hostUri + "/tick/subscription");
   }
 
   @EventListener(WebServerInitializedEvent.class)
@@ -77,7 +64,7 @@ public class TickController {
         break;
       case "Notification":
         var message = payload.get("Message");
-        socketConnectionHandler.broadcastEvent(message.stringValue());
+        log.info("received notification: {}", message.stringValue());
         break;
       case "UnsubscribeConfirmation":
         log.info("Tick unsubscribed");

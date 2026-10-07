@@ -1,9 +1,9 @@
 package com.ryanachten.ore.world.services;
 
-import com.ryanachten.ore.common.EventEnvelope;
-import com.ryanachten.ore.common.EventType;
-import com.ryanachten.ore.common.SnsTopics;
-import com.ryanachten.ore.common.config.SnsTopicResolver;
+import com.ryanachten.ore.common.models.EventEnvelope;
+import com.ryanachten.ore.common.models.EventType;
+import com.ryanachten.ore.common.models.SnsTopics;
+import com.ryanachten.ore.common.services.SnsTopicResolver;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;

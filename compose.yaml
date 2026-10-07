@@ -7,6 +7,15 @@ services:
     depends_on:
       localstack:
         condition: service_healthy
+  vehicle:
+    container_name: vehicle
+    build: ./vehicle
+    environment:
+      - AWS_ENDPOINT_OVERRIDE=http://localstack:4566
+      - VEHICLE_HOST_URI=http://vehicle:8080
+    depends_on:
+      localstack:
+        condition: service_healthy
   gateway:
     container_name: gateway
     build: ./gateway
