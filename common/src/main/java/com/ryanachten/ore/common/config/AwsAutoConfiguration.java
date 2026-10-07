@@ -1,5 +1,6 @@
 package com.ryanachten.ore.common.config;
 
+import com.ryanachten.ore.common.services.SnsTopicResolver;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;

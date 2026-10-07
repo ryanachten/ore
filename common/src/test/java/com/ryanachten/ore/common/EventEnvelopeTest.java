@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.ryanachten.ore.common.models.EventEnvelope;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;

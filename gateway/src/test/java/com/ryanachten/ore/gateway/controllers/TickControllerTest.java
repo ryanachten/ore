@@ -9,12 +9,11 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.ryanachten.ore.common.EventEnvelope;
-import com.ryanachten.ore.common.EventType;
-import com.ryanachten.ore.common.SnsTopics;
-import com.ryanachten.ore.common.config.SnsTopicResolver;
+import com.ryanachten.ore.common.models.EventEnvelope;
+import com.ryanachten.ore.common.models.EventType;
+import com.ryanachten.ore.common.models.SnsTopics;
+import com.ryanachten.ore.common.services.SnsTopicResolver;
 import com.ryanachten.ore.gateway.services.SocketConnectionHandler;
-import com.ryanachten.ore.gateway.services.TickSubscriptionService;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,6 +24,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import software.amazon.awssdk.services.sns.SnsClient;
 import software.amazon.awssdk.services.sns.model.ConfirmSubscriptionRequest;
+import software.amazon.awssdk.services.sns.model.SubscribeRequest;
 import tools.jackson.databind.ObjectMapper;
 
 class TickControllerTest {
@@ -33,11 +33,14 @@ class TickControllerTest {
   private static final String TOKEN = "abc123";
   private static final String SUBSCRIBE_URL =
       "https://sns.us-east-1.amazonaws.com/?Action=ConfirmSubscription&Token=" + TOKEN;
+  private static final String HOST_URI = "http://localhost:8080";
+  private static final String PROTOCOL = "http";
 
   private final ObjectMapper objectMapper = new ObjectMapper();
 
   private SnsClient snsClient;
   private SocketConnectionHandler socketConnectionHandler;
+  private TickController controller;
   private MockMvc mockMvc;
 
   @BeforeEach
@@ -48,13 +51,23 @@ class TickControllerTest {
     var snsTopicResolver = mock(SnsTopicResolver.class);
     when(snsTopicResolver.resolve(SnsTopics.ORE_SIM)).thenReturn(EXPECTED_ARN);
 
-    var tickSubscriptionService =
-        new TickSubscriptionService(snsClient, snsTopicResolver, objectMapper);
+    controller =
+        new TickController(
+            objectMapper, socketConnectionHandler, snsClient, snsTopicResolver, HOST_URI, PROTOCOL);
 
-    mockMvc =
-        MockMvcBuilders.standaloneSetup(
-                new TickController(objectMapper, tickSubscriptionService, socketConnectionHandler))
-            .build();
+    mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
+  }
+
+  @Test
+  void subscriptionEndpointIsBuiltFromTheConstructorInjectedHostUri() {
+    controller.initController();
+
+    var requestCaptor = ArgumentCaptor.forClass(SubscribeRequest.class);
+    verify(snsClient).subscribe(requestCaptor.capture());
+
+    assertThat(requestCaptor.getValue().endpoint()).isEqualTo(HOST_URI + "/tick/subscription");
+    assertThat(requestCaptor.getValue().protocol()).isEqualTo(PROTOCOL);
+    assertThat(requestCaptor.getValue().topicArn()).isEqualTo(EXPECTED_ARN);
   }
 
   @Test

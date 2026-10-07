@@ -1,4 +1,4 @@
-package com.ryanachten.ore.common.config;
+package com.ryanachten.ore.common.services;
 
 import java.util.concurrent.ConcurrentHashMap;
 import software.amazon.awssdk.services.sns.SnsClient;
