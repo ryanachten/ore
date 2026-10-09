@@ -11,5 +11,6 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-validation")
 	api(platform("software.amazon.awssdk:bom:2.51.3"))
 	api("software.amazon.awssdk:sns")
+	api("software.amazon.awssdk:kinesis")
 	testImplementation(libs.junit.jupiter)
 }

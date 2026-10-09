@@ -1,8 +1,9 @@
 package com.ryanachten.ore.vehicle.controllers;
 
-import com.ryanachten.ore.common.models.SnsTopics;
+import com.ryanachten.ore.common.config.SnsTopics;
 import com.ryanachten.ore.common.services.SnsSubscriptionService;
-import com.ryanachten.ore.common.services.SnsTopicResolver;
+import com.ryanachten.ore.common.services.SnsTopicArnResolver;
+import com.ryanachten.ore.vehicle.services.VehicleService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -24,17 +25,20 @@ public class TickController {
   private static final Logger log = LoggerFactory.getLogger(TickController.class);
   private final SnsSubscriptionService snsSubscriptionService;
   private final ObjectMapper objectMapper;
+  private final VehicleService vehicleService;
 
   public TickController(
+      @Value("${vehicle.host.uri}") String hostUri,
+      @Value("${vehicle.host.protocol}") String protocol,
       ObjectMapper objectMapper,
       SnsClient snsClient,
-      SnsTopicResolver snsTopicResolver,
-      @Value("${vehicle.host.uri}") String hostUri,
-      @Value("${vehicle.host.protocol}") String protocol) {
+      SnsTopicArnResolver snsTopicArnResolver,
+      VehicleService vehicleService) {
 
-    var topicArn = snsTopicResolver.resolve(SnsTopics.ORE_SIM);
+    var topicArn = snsTopicArnResolver.resolve(SnsTopics.ORE_SIM);
 
     this.objectMapper = objectMapper;
+    this.vehicleService = vehicleService;
     this.snsSubscriptionService =
         new SnsSubscriptionService(snsClient, topicArn, protocol, hostUri + "/tick/subscription");
   }
@@ -64,7 +68,8 @@ public class TickController {
         break;
       case "Notification":
         var message = payload.get("Message");
-        log.info("received notification: {}", message.stringValue());
+        // TODO: parse and properly handle message
+        vehicleService.handleTick();
         break;
       case "UnsubscribeConfirmation":
         log.info("Tick unsubscribed");

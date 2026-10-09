@@ -9,10 +9,10 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.ryanachten.ore.common.config.SnsTopics;
 import com.ryanachten.ore.common.models.EventEnvelope;
 import com.ryanachten.ore.common.models.EventType;
-import com.ryanachten.ore.common.models.SnsTopics;
-import com.ryanachten.ore.common.services.SnsTopicResolver;
+import com.ryanachten.ore.common.services.SnsTopicArnResolver;
 import com.ryanachten.ore.gateway.services.SocketConnectionHandler;
 import java.util.Map;
 import java.util.UUID;
@@ -48,7 +48,7 @@ class TickControllerTest {
     snsClient = mock(SnsClient.class);
     socketConnectionHandler = mock(SocketConnectionHandler.class);
 
-    var snsTopicResolver = mock(SnsTopicResolver.class);
+    var snsTopicResolver = mock(SnsTopicArnResolver.class);
     when(snsTopicResolver.resolve(SnsTopics.ORE_SIM)).thenReturn(EXPECTED_ARN);
 
     controller =
