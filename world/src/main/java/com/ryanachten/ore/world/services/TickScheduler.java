@@ -1,9 +1,9 @@
 package com.ryanachten.ore.world.services;
 
+import com.ryanachten.ore.common.config.SnsTopics;
 import com.ryanachten.ore.common.models.EventEnvelope;
 import com.ryanachten.ore.common.models.EventType;
-import com.ryanachten.ore.common.models.SnsTopics;
-import com.ryanachten.ore.common.services.SnsTopicResolver;
+import com.ryanachten.ore.common.services.SnsTopicArnResolver;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -26,14 +26,14 @@ public class TickScheduler {
   private static final String EVENT_TYPE = EventType.SIM_TICK;
 
   private final SnsClient snsClient;
-  private final SnsTopicResolver snsTopicResolver;
+  private final SnsTopicArnResolver snsTopicArnResolver;
   private final ObjectMapper objectMapper;
   private final AtomicLong tickCount = new AtomicLong(1);
 
   public TickScheduler(
-      SnsClient snsClient, SnsTopicResolver snsTopicResolver, ObjectMapper objectMapper) {
+      SnsClient snsClient, SnsTopicArnResolver snsTopicArnResolver, ObjectMapper objectMapper) {
     this.snsClient = snsClient;
-    this.snsTopicResolver = snsTopicResolver;
+    this.snsTopicArnResolver = snsTopicArnResolver;
     this.objectMapper = objectMapper;
   }
 
@@ -55,7 +55,7 @@ public class TickScheduler {
         PublishRequest.builder()
             .messageAttributes(msgAttributes)
             .message(jsonPayload)
-            .topicArn(snsTopicResolver.resolve(SnsTopics.ORE_SIM))
+            .topicArn(snsTopicArnResolver.resolve(SnsTopics.ORE_SIM))
             .build();
 
     try {

@@ -1,8 +1,8 @@
 package com.ryanachten.ore.gateway.controllers;
 
-import com.ryanachten.ore.common.models.SnsTopics;
+import com.ryanachten.ore.common.config.SnsTopics;
 import com.ryanachten.ore.common.services.SnsSubscriptionService;
-import com.ryanachten.ore.common.services.SnsTopicResolver;
+import com.ryanachten.ore.common.services.SnsTopicArnResolver;
 import com.ryanachten.ore.gateway.services.SocketConnectionHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,11 +31,11 @@ public class TickController {
       ObjectMapper objectMapper,
       SocketConnectionHandler socketConnectionHandler,
       SnsClient snsClient,
-      SnsTopicResolver snsTopicResolver,
+      SnsTopicArnResolver snsTopicArnResolver,
       @Value("${gateway.host.uri}") String hostUri,
       @Value("${gateway.host.protocol}") String protocol) {
 
-    var topicArn = snsTopicResolver.resolve(SnsTopics.ORE_SIM);
+    var topicArn = snsTopicArnResolver.resolve(SnsTopics.ORE_SIM);
 
     this.objectMapper = objectMapper;
     this.snsSubscriptionService =

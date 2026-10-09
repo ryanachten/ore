@@ -4,7 +4,7 @@ A distributed mining and resource-utilisation simulation built to learn **event-
 
 Raw materials are prospected in the landscape, extracted, and hauled back to the base where they are stored and spent to build new vehicles and mining equipment. The base is seeded with a small stockpile and one of each vehicle — **materials are required to extract materials** — so the player must bootstrap capability before the stockpile runs out.
 
-The simulation is an evolution of [hazard](https://github.com/ryancdotnet/hazard): the same tick-based entity model, but the entities are now *separate Spring Boot processes* that communicate only through AWS messaging services emulated by LocalStack.
+The simulation is an evolution of [hazard](https://github.com/ryancdotnet/hazard): the same tick-based entity model, but it is now a set of Spring Boot services that communicate only through AWS messaging services emulated by LocalStack. Entities are in-process state machines hosted by the `vehicle` service — one `vehicle` app polls every per-entity queue — rather than one process per entity.
 
 ## Learning goals
 
@@ -26,7 +26,7 @@ The point of this project is to get hands-on with event-driven architecture on A
 | Dead-letter handling | Per-queue DLQ + redrive tooling |
 | Archive / cold path | Firehose buffers Kinesis facts into the S3 ledger, partitioned by date |
 | Schema evolution | Enveloped events with a `version` field; JSON in v1 |
-| Runtime resource provisioning | Building a vehicle provisions its SQS queue + SNS subscription via the SDK |
+| Runtime resource provisioning | Building a vehicle provisions its SQS queue + SNS subscription via the SDK; the `vehicle` app attaches the new consumer on `vehicle.built` |
 
 ## Tech stack
 
@@ -81,7 +81,7 @@ graph TB
     GW --> EB
 ```
 
-Services never talk directly — only through the brokers.
+Services never talk directly — only through the brokers. A single `vehicle` app long-polls every `ore-vehicle-<id>` queue and routes each command to the in-process state machine for that `vehicleId`; per-entity queues (with filter policies + DLQs) provide isolation without one process per entity.
 
 ## Resource inventory
 
@@ -94,12 +94,12 @@ Services never talk directly — only through the brokers.
 | SNS topic | `ore-telemetry` | fan-out to gateway (WS → FE) |
 | SNS topic | `ore-commands` | fan-out to per-entity SQS via filter policies |
 | SQS queue | `ore-base` (+ DLQ) | base commands: build, refine, dispatch |
-| SQS queue | `ore-vehicle-<id>` (+ DLQ) | per-vehicle commands; provisioned on build |
+| SQS queue | `ore-vehicle-<id>` (+ DLQ) | per-vehicle commands; all long-polled by the single `vehicle` app; provisioned on build |
 | Kinesis stream | `ore-facts` | ordered fact log, partition key = aggregate id |
 | Firehose | `ore-facts-delivery` | Kinesis source → S3 |
 | S3 bucket | `ore-ledger` | raw fact archive, partitioned by date |
 
-Provisioned by a LocalStack init script at startup; per-vehicle queues are provisioned at runtime by `base` when a vehicle is built.
+Provisioned by a LocalStack init script at startup; per-vehicle queues are provisioned at runtime by `base` when a vehicle is built, and announced via `vehicle.built` so the running `vehicle` app attaches a consumer for the new queue.
 
 ## Services
 
@@ -107,7 +107,7 @@ Provisioned by a LocalStack init script at startup; per-vehicle queues are provi
 |---|---|
 | `world` | Owns the global clock: publishes `sim/tick` to SNS `ore-sim` every ~300ms. Owns terrain and seeds deposits (Postgres). Does **not** own entities. |
 | `base` | Material storage, build queue, refinery, vehicle dispatch. Postgres state + transactional outbox → Kinesis facts. Consumes `ore-base` queue. Provisions a vehicle's queue + subscription when it is built. |
-| `vehicle` | One app, `--kind=prospector\|miner\|hauler`. A state machine that advances one step per tick. Consumes its own SQS queue; publishes telemetry to EventBridge and facts to Kinesis. |
+| `vehicle` | One app hosting every vehicle as an in-process state machine (one step per tick). Long-polls **all** `ore-vehicle-<id>` SQS queues, routing each command by `vehicleId`; attaches a consumer when `vehicle.built` announces a new queue. Publishes telemetry to EventBridge and facts to Kinesis. |
 | `gateway` | Kinesis shard consumer → Postgres projections; SNS telemetry consumer → WebSocket push; turns FE commands into EventBridge events; serves snapshots and the ledger. |
 
 ## Tick model
@@ -194,5 +194,6 @@ Delivery is tracked in [TASK.md](./TASK.md) — a vertical-slice breakdown of th
 - Protobuf / Avro event encoding and schema-registry tooling.
 - Distributed tick ordering: sequence-number reconciliation, or per-entity clocks — a deliberate later exercise.
 - Refuel delivery (fuel tanker entity) instead of auto-return.
+- Failure isolation: one `vehicle` app hosting all entities vs a process per entity (independent scaling / blast radius) — the single app is the v1 choice; revisit if isolation becomes a concern.
 - Continuous terrain vs grid; pathfinding upgrades.
 - Terraform (or `awslocal`) as the provisioning mechanism for the static resources vs the LocalStack init script.

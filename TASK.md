@@ -100,20 +100,20 @@ Horizontal work (infra, messaging, frontend, domain) is deliberately **interleav
 
 ---
 
-## S6 — The Map: a prospector moves
+## S6 — The Map: a vehicle moves
 
-**Goal.** A canvas shows the base and a prospector advancing one step per tick along a canned out-and-back journey, updating live. A browser that joins mid-run receives the current snapshot.
+**Goal.** A canvas shows the base and a vehicle advancing one step per tick along a canned out-and-back journey, updating live. A browser that joins mid-run receives the current snapshot. (Vehicle *kinds* — prospector/miner/hauler — are deferred to S10; this slice runs one generic vehicle.)
 
 **Build**
 - Kinesis stream `ore-facts` added to init script.
-- `vehicle` module: Spring Boot app started with `--kind=prospector`; subscribes to `ore-sim` (SNS HTTP endpoint) for ticks; `Prospector` state machine (idle → travel → … → idle) advances one step per tick; publishes facts (`vehicle.state`, `vehicle.position`) **directly** to Kinesis, partition key `vehicle-<id>`, facts carry `tick`; dedupes duplicate ticks by event id.
+- `vehicle` module: a plain Spring Boot app (no kind flag yet — one generic vehicle) that subscribes to `ore-sim` (SNS HTTP endpoint) for ticks; a `Vehicle` state machine (idle → travel → … → idle) advances one step per tick; publishes facts (`vehicle.state`, `vehicle.position`) **directly** to Kinesis, partition key `vehicle-<id>`, facts carry `tick`; dedupes duplicate ticks by event id. State is immutable — a pure `step(vehicle, tick) -> vehicle` function, unit-tested without Spring.
 - `gateway`: Kinesis shard consumer (poll loop) folds facts into an in-memory world view; broadcasts a **snapshot on WS connect + incremental updates** on each new fact.
 - `frontend`: canvas draws base + vehicle (dot, state label); re-renders on snapshot/updates.
 - Tests: pure state-machine step tests (no Spring); consumer dedupe test.
 
-**Primary learning.** Event-sourcing seeds (facts are immutable, ordered, replayable records); Kinesis put + consume mechanics (partition key, shard iterator, poll loop); snapshot-vs-live on WS; first entity state machine; running one app with a `--kind` arg.
+**Primary learning.** Event-sourcing seeds (facts are immutable, ordered, replayable records); Kinesis put + consume mechanics (partition key, shard iterator, poll loop); snapshot-vs-live on WS; first entity state machine. (`--kind` and multiple vehicle types are deferred to S10.)
 
-**Deferred.** Postgres (projections are in-memory here), commands, deposits, fuel, miner, EventBridge.
+**Deferred.** Vehicle kinds, Postgres (projections are in-memory here), commands, deposits, fuel, EventBridge.
 
 **Done when.** Two browsers; the one that connects mid-run still shows the same live map; gateway logs show facts streaming from Kinesis.
 
@@ -121,13 +121,13 @@ Horizontal work (infra, messaging, frontend, domain) is deliberately **interleav
 
 ## S7 — The Ops Plane: commands & telemetry
 
-**Goal.** Click the map to dispatch the prospector to that point — the command path `gateway → EventBridge → SNS → SQS → vehicle` works, idempotently. The vehicle's status/telemetry streams back over `EventBridge → SNS → gateway → WS`, and a broker inspector shows message counts. Command vs event becomes tangible.
+**Goal.** Click the map to dispatch the vehicle to that point — the command path `gateway → EventBridge → SNS → SQS → vehicle` works, idempotently. The vehicle's status/telemetry streams back over `EventBridge → SNS → gateway → WS`, and a broker inspector shows message counts. Command vs event becomes tangible.
 
 **Build**
 - EventBridge rules: `route-commands` (`command.*` → SNS `ore-commands`), `route-telemetry` (`telemetry.*` → SNS `ore-telemetry`).
 - SNS `ore-commands` → SQS `ore-vehicle-1` (+ DLQ) with a **filter policy** (`vehicleId`); SNS `ore-telemetry` → gateway (SNS HTTP endpoint).
 - `gateway`: `POST /api/commands` → `command.dispatch` → EventBridge; plus WS live-feed pane for telemetry; broker inspector (SNS topics, SQS depth via `getQueueAttributes`).
-- `vehicle`: SQS consumer loop (long-poll) with an **idempotent handler** (dedupe by event id); emits `vehicle.dispatched` fact and `telemetry.status`.
+- `vehicle`: SQS consumer loop (long-poll) with an **idempotent handler** (dedupe by event id); routes each command to the vehicle keyed by `vehicleId` (one queue today — the app is built to long-poll many); emits `vehicle.dispatched` fact and `telemetry.status`.
 - `frontend`: click-to-dispatch (disabled while in flight), live event feed, inspector panel.
 - Tests: delivering the same command twice causes one action; a command for another vehicle is filtered out and never lands.
 
@@ -182,15 +182,15 @@ Horizontal work (infra, messaging, frontend, domain) is deliberately **interleav
 **Goal.** A miner extracts ore from a discovered deposit: travels, fills cargo over N ticks, returns to base and unloads. An inventory panel shows stockpile + per-vehicle cargo, derived from facts. Two vehicle kinds run side by side.
 
 **Build**
-- `miner` kind: idle → travel → extract → travel → idle; cargo capacity, extraction rate; unload at base emits `materials.deposited`.
+- `miner` kind — **vehicle kinds (prospector/miner/hauler) land here**: idle → travel → extract → travel → idle; cargo capacity, extraction rate; unload at base emits `materials.deposited`. The `vehicle` app now hosts multiple kinds: config gains a per-vehicle kind map and it routes commands by `vehicleId` to the right state machine.
 - Facts: `vehicle.state`, `materials.extracted` (cargo), `materials.deposited` (stockpile).
 - `gateway`: `inventory` projection becomes real — stockpile + per-vehicle cargo, pushed on change.
-- `vehicle-2` queue + DLQ + filter policy (still statically provisioned; runtime provisioning is S11).
+- `vehicle-2` queue + DLQ + filter policy (still statically provisioned; runtime provisioning is S11); the same `vehicle` app long-polls it too — no second container.
 - `frontend`: inventory panel (stockpile + cargo bars); select a miner → dispatch to a deposit (reuses the S7 command path).
 - `:common:sim`: mining rates, cargo sizes, distances (tunables).
 - Tests: miner state machine incl. cargo-full → auto-return.
 
-**Primary learning.** A second entity state machine; derived accounting (stockpile = a fold over facts); economy enters the sim; scaling the command path to a second filtered queue.
+**Primary learning.** A second entity state machine hosted alongside the first (one app, N queues, routing by `vehicleId`); derived accounting (stockpile = a fold over facts); economy enters the sim; scaling the command path to a second filtered queue.
 
 **Deferred.** Base service (storage becomes authoritative there), fuel economy, refinery, build queue, outbox, hauler.
 
@@ -205,13 +205,13 @@ Horizontal work (infra, messaging, frontend, domain) is deliberately **interleav
 **Build**
 - `base` service: Postgres (state + **outbox** table), Flyway, SQS `ore-base` + DLQ; consumes `command.build_vehicle`, `command.refine_fuel`, `command.dispatch`.
 - **Transactional outbox**: state change + fact row in one transaction; a poller publishes outbox rows to Kinesis. The reliable-facts pattern, contrasted with the vehicles' direct puts.
-- Refinery (`1 iron + 1 copper → 2 fuel` → `fuel.refined`); build queue with timers; on completion deduct cost, emit `vehicle.built`, and **provision the new vehicle's SQS queue + SNS subscription at runtime via the SDK** — the flagship provisioning learning.
+- Refinery (`1 iron + 1 copper → 2 fuel` → `fuel.refined`); build queue with timers; on completion deduct cost, **provision the new vehicle's SQS queue + SNS subscription at runtime via the SDK**, and announce `vehicle.built` on the ops plane so the running `vehicle` app **attaches a consumer** for the new queue — the flagship provisioning learning.
 - Fuel economy: burn per tick, reserve + auto-return (`vehicle.stalled`), refill from stockpile at zero cost.
 - `gateway`: `inventory` becomes base-authoritative (from base's facts).
 - `frontend`: build panel (kind + cost), refine button, build queue display.
-- Tests: outbox survives a poller outage (fact not lost); build deducts cost + provisions the queue; build deduped by command id.
+- Tests: outbox survives a poller outage (fact not lost); build deducts cost, provisions the queue, and the `vehicle` app attaches a consumer; build deduped by command id.
 
-**Primary learning.** Transactional outbox; runtime resource provisioning via the SDK; a stateful service vs the stateless tick machines; the catch-22 economy (finite stockpile, everything burns fuel).
+**Primary learning.** Transactional outbox; runtime resource provisioning via the SDK (queue + subscription + the `vehicle` app reacting to `vehicle.built` to attach the consumer); a stateful service vs the stateless tick machines; the catch-22 economy (finite stockpile, everything burns fuel).
 
 **Deferred.** Hauler, archive, ledger UI, DLQ redrive.
 

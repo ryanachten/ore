@@ -4,11 +4,11 @@ import java.util.concurrent.ConcurrentHashMap;
 import software.amazon.awssdk.services.sns.SnsClient;
 import software.amazon.awssdk.services.sns.model.Topic;
 
-public class SnsTopicResolver {
+public class SnsTopicArnResolver {
   private final SnsClient snsClient;
   private final ConcurrentHashMap<String, String> arnCache = new ConcurrentHashMap<>();
 
-  public SnsTopicResolver(SnsClient snsClient) {
+  public SnsTopicArnResolver(SnsClient snsClient) {
     this.snsClient = snsClient;
   }
 
@@ -16,11 +16,11 @@ public class SnsTopicResolver {
     return arnCache.computeIfAbsent(topicName, this::searchTopics);
   }
 
-  public String searchTopics(String topicName) {
+  private String searchTopics(String topicName) {
     return snsClient.listTopicsPaginator().stream()
         .flatMap(res -> res.topics().stream())
         .map(Topic::topicArn)
-        .filter(arn -> arn.contains(topicName))
+        .filter(arn -> arn.endsWith(":" + topicName))
         .findFirst()
         .orElseThrow(
             () ->

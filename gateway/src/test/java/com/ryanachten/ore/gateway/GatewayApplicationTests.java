@@ -1,6 +1,6 @@
 package com.ryanachten.ore.gateway;
 
-import com.ryanachten.ore.common.services.SnsTopicResolver;
+import com.ryanachten.ore.common.services.SnsTopicArnResolver;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -11,7 +11,7 @@ class GatewayApplicationTests {
 
   @MockitoBean private SnsClient snsClient;
 
-  @MockitoBean private SnsTopicResolver snsTopicResolver;
+  @MockitoBean private SnsTopicArnResolver snsTopicArnResolver;
 
   @Test
   void contextLoads() {}
