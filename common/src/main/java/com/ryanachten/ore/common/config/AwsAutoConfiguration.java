@@ -39,7 +39,7 @@ public class AwsAutoConfiguration {
 
   @Bean
   @ConditionalOnMissingBean
-  public SnsTopicArnResolver snsTopicResolver(SnsClient snsClient) {
+  public SnsTopicArnResolver snsTopicArnResolver(SnsClient snsClient) {
     return new SnsTopicArnResolver(snsClient);
   }
 
