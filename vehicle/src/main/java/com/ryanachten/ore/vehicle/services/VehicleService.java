@@ -45,7 +45,7 @@ public class VehicleService {
   }
 
   // TODO: this is placeholder tick handling, will eventually conduct business logic like wayfinding
-  public void handleTick(long tick) {
+  public synchronized void handleTick(long tick) {
     // Prevent duplicate or out of order events triggering actions
     if (tick <= lastTick) {
       return;
