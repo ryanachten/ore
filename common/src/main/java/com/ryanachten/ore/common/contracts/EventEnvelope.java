@@ -1,4 +1,4 @@
-package com.ryanachten.ore.common.models;
+package com.ryanachten.ore.common.contracts;
 
 import java.util.List;
 import java.util.Map;

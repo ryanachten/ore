@@ -263,5 +263,6 @@ Each item is one focused learning; pick up as desired. "Appears in" maps to PROJ
 - **SQS FIFO ordering** — per-entity command ordering via FIFO queues. *Concept: ordering.*
 - **EventBridge Scheduler as the clock** — replaces the SNS `sim.tick`. *Concept: command vs event (a scheduled command).*
 - **Consumer-lag metrics** — shard iterator age surfaced in the inspector. *Concept: backpressure & throttling.*
+- **KCL migration** — replace the hand-rolled Kinesis shard consumer with the Kinesis Client Library (DynamoDB lease table, one-reader-per-shard, resharding). *Concept: shard leasing & consumer-group rebalancing.*
 - **Avro / schema registry** — versioned binary envelopes. *Concept: schema evolution.*
 - **Terraform provisioning** — replace the static init script. *Concept: runtime provisioning.*

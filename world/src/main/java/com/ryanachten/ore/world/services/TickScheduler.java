@@ -1,8 +1,8 @@
 package com.ryanachten.ore.world.services;
 
 import com.ryanachten.ore.common.config.SnsTopics;
-import com.ryanachten.ore.common.models.EventEnvelope;
-import com.ryanachten.ore.common.models.EventType;
+import com.ryanachten.ore.common.contracts.EventEnvelope;
+import com.ryanachten.ore.common.contracts.EventType;
 import com.ryanachten.ore.common.services.SnsTopicArnResolver;
 import java.util.HashMap;
 import java.util.Map;
