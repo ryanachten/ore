@@ -1,12 +1,12 @@
 package com.ryanachten.ore.vehicle.services;
 
 import com.ryanachten.ore.common.config.KinesisStreams;
-import com.ryanachten.ore.common.models.EventEnvelope;
-import com.ryanachten.ore.common.models.EventType;
+import com.ryanachten.ore.common.contracts.EventEnvelope;
+import com.ryanachten.ore.common.contracts.EventType;
+import com.ryanachten.ore.common.contracts.Position;
+import com.ryanachten.ore.common.contracts.Vehicle;
+import com.ryanachten.ore.common.contracts.VehicleState;
 import com.ryanachten.ore.common.services.KinesisStreamArnResolver;
-import com.ryanachten.ore.vehicle.models.Position;
-import com.ryanachten.ore.vehicle.models.Vehicle;
-import com.ryanachten.ore.vehicle.models.VehicleState;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -82,15 +82,9 @@ public class VehicleService {
   }
 
   private PutRecordsRequestEntry createPublishRequest(Vehicle vehicle, long tick) {
-    var vehiclePayload = objectMapper.writeValueAsString(vehicle);
     var envelope =
         new EventEnvelope(
-            UUID.randomUUID(),
-            EventType.VEHICLE_TICK,
-            tick,
-            SOURCE,
-            1,
-            Map.of("vehicle", vehiclePayload));
+            UUID.randomUUID(), EventType.VEHICLE_TICK, tick, SOURCE, 1, Map.of("vehicle", vehicle));
 
     var envelopePayload = objectMapper.writeValueAsBytes(envelope);
     return PutRecordsRequestEntry.builder()

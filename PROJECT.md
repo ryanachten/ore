@@ -191,6 +191,7 @@ Delivery is tracked in [TASK.md](./TASK.md) — a vertical-slice breakdown of th
 - Tick routing through SNS vs EventBridge Scheduler as the clock.
 - Ledger reads from Postgres vs S3-only (Athena-style queries).
 - Split the Kinesis consumer out of the gateway into a dedicated `projector` service.
+- Kinesis consumer internals: the v1 hand-rolled shard loop assumes a single instance reading one iterator per shard (S6). Migrate to the Kinesis Client Library (KCL) for lease-based shard assignment, one-reader-per-shard across instances, and resharding safety.
 - Protobuf / Avro event encoding and schema-registry tooling.
 - Distributed tick ordering: sequence-number reconciliation, or per-entity clocks — a deliberate later exercise.
 - Refuel delivery (fuel tanker entity) instead of auto-return.

@@ -10,8 +10,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.ryanachten.ore.common.config.SnsTopics;
-import com.ryanachten.ore.common.models.EventEnvelope;
-import com.ryanachten.ore.common.models.EventType;
+import com.ryanachten.ore.common.contracts.EventEnvelope;
+import com.ryanachten.ore.common.contracts.EventType;
 import com.ryanachten.ore.common.services.SnsTopicArnResolver;
 import com.ryanachten.ore.gateway.services.SocketConnectionHandler;
 import java.util.Map;

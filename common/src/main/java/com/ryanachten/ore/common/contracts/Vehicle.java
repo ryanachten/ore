@@ -1,4 +1,4 @@
-package com.ryanachten.ore.vehicle.models;
+package com.ryanachten.ore.common.contracts;
 
 import java.util.UUID;
 

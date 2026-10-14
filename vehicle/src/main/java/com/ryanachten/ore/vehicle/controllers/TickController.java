@@ -1,7 +1,7 @@
 package com.ryanachten.ore.vehicle.controllers;
 
 import com.ryanachten.ore.common.config.SnsTopics;
-import com.ryanachten.ore.common.models.EventEnvelope;
+import com.ryanachten.ore.common.contracts.EventEnvelope;
 import com.ryanachten.ore.common.services.SnsSubscriptionService;
 import com.ryanachten.ore.common.services.SnsTopicArnResolver;
 import com.ryanachten.ore.vehicle.services.VehicleService;
