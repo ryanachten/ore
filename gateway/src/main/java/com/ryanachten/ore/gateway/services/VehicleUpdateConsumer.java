@@ -3,6 +3,7 @@ package com.ryanachten.ore.gateway.services;
 import com.ryanachten.ore.common.config.KinesisStreams;
 import com.ryanachten.ore.common.contracts.EventEnvelope;
 import com.ryanachten.ore.common.contracts.Vehicle;
+import com.ryanachten.ore.gateway.repositories.WorldStateRepository;
 import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.Executors;
@@ -27,14 +28,22 @@ public class VehicleUpdateConsumer implements SmartLifecycle {
   private final KinesisClient kinesisClient;
   private final ObjectMapper objectMapper;
   private final HashMap<String, String> shardIterators = new HashMap<>();
+  private final SocketConnectionHandler socketConnectionHandler;
+  private final WorldStateRepository vehicleRepository;
   private Boolean isRunning = false;
   private ScheduledExecutorService scheduler;
 
   private static final int POLL_PERIOD_MS = 1000;
 
-  public VehicleUpdateConsumer(KinesisClient kinesisClient, ObjectMapper objectMapper) {
+  public VehicleUpdateConsumer(
+      KinesisClient kinesisClient,
+      ObjectMapper objectMapper,
+      SocketConnectionHandler socketConnectionHandler,
+      WorldStateRepository vehicleRepository) {
     this.kinesisClient = kinesisClient;
     this.objectMapper = objectMapper;
+    this.socketConnectionHandler = socketConnectionHandler;
+    this.vehicleRepository = vehicleRepository;
   }
 
   @Override
@@ -99,15 +108,11 @@ public class VehicleUpdateConsumer implements SmartLifecycle {
         .forEach(
             r -> {
               var data = r.data().asUtf8String();
+              socketConnectionHandler.broadcastEvent(data);
               var envelope = objectMapper.readValue(data, EventEnvelope.class);
               var vehicle =
                   objectMapper.convertValue(envelope.payload().get("vehicle"), Vehicle.class);
-              log.info(
-                  "Retrieved vehicle update: id: {}, state: {}, x: {}, y: {}",
-                  vehicle.id(),
-                  vehicle.state(),
-                  vehicle.position().x(),
-                  vehicle.position().y());
+              vehicleRepository.updateState(vehicle, envelope.tick());
             });
 
     shardIterators.put(shardId, response.nextShardIterator());
