@@ -112,6 +112,24 @@ describe("useEventSubscription", () => {
     expect(result.current.data).toBeNull();
   });
 
+  it("invokes the event callback for tick messages", () => {
+    const onEvent = vi.fn();
+    renderHook(() => useEventSubscription(onEvent));
+
+    act(() => openedSocket().onmessage?.(message(tickEnvelope(42))));
+
+    expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({ tick: 42 }));
+  });
+
+  it("does not invoke the event callback for invalid messages", () => {
+    const onEvent = vi.fn();
+    renderHook(() => useEventSubscription(onEvent));
+
+    act(() => openedSocket().onmessage?.(message("not-an-envelope")));
+
+    expect(onEvent).not.toHaveBeenCalled();
+  });
+
   it("flags an error when the socket fails", () => {
     const { result } = renderHook(() => useEventSubscription());
 
