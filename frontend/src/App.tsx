@@ -1,12 +1,19 @@
-import useEventSubscription from "./hooks/useEventSubscription";
+import useWorldState from "./hooks/useWorldState";
 
 function App() {
-  const event = useEventSubscription();
+  const state = useWorldState();
 
   return (
     <section id="center">
       <div>
-        <h1>Tick: {event.data?.tick ?? "Unknown"}</h1>
+        <h1>Tick: {state.tick ?? "Unknown"}</h1>
+        <ul>
+          {Object.keys(state.vehicles).map((id) => (
+            <li
+              key={id}
+            >{`state: ${state.vehicles[id].state}, x: ${state.vehicles[id].position.x}, y: ${state.vehicles[id].position.y}`}</li>
+          ))}
+        </ul>
       </div>
     </section>
   );

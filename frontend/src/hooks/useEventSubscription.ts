@@ -1,26 +1,33 @@
-import { useEffect, useState } from "react";
-import type { EventEnvelope } from "../models/event";
+import { useEffect, useRef, useState } from "react";
+import type { WebsocketsEvent } from "../models/event";
 import { WEBSOCKET_ENDPOINT } from "../constants/routes";
 
 export type EventSubscription = {
-  data: EventEnvelope | null;
+  data: WebsocketsEvent | null;
   hasError: boolean;
   isConnected: boolean;
 };
 
-const parseEnvelope = (raw: string): EventEnvelope | undefined => {
+export type EventCallback = (event: WebsocketsEvent) => void;
+
+const parseEvent = (raw: string): WebsocketsEvent | undefined => {
   try {
-    const parsed = JSON.parse(raw) as EventEnvelope | undefined;
+    const parsed = JSON.parse(raw) as WebsocketsEvent | undefined;
     return typeof parsed?.tick === "number" ? parsed : undefined;
   } catch {
     return undefined;
   }
 };
 
-const useEventSubscription = (): EventSubscription => {
-  const [eventEnvelope, setEventEnvelope] = useState<EventEnvelope | null>(null);
+const useEventSubscription = (onEvent?: EventCallback): EventSubscription => {
+  const [event, setEvent] = useState<WebsocketsEvent | null>(null);
   const [isConnected, setConnected] = useState<boolean>(false);
   const [hasError, setHasError] = useState<boolean>(false);
+  const onEventRef = useRef(onEvent);
+
+  useEffect(() => {
+    onEventRef.current = onEvent;
+  }, [onEvent]);
 
   useEffect(() => {
     const websocket = new WebSocket(WEBSOCKET_ENDPOINT);
@@ -40,9 +47,10 @@ const useEventSubscription = (): EventSubscription => {
     };
 
     websocket.onmessage = (event) => {
-      const data = parseEnvelope(event.data);
+      const data = parseEvent(event.data);
       if (data !== undefined) {
-        setEventEnvelope(data);
+        setEvent(data);
+        onEventRef.current?.(data);
       }
     };
 
@@ -52,7 +60,7 @@ const useEventSubscription = (): EventSubscription => {
   }, []);
 
   return {
-    data: eventEnvelope,
+    data: event,
     isConnected,
     hasError,
   };
