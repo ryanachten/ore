@@ -77,7 +77,7 @@ public class VehicleUpdateConsumer implements SmartLifecycle {
     var request = ListShardsRequest.builder().streamName(KinesisStreams.ORE_FACTS).build();
     var result = kinesisClient.listShards(request);
 
-    if (!result.hasShards()) {
+    if (result == null || !result.hasShards()) {
       throw new IllegalAccessException("No shards for stream can be found");
     }
 

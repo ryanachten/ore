@@ -156,7 +156,7 @@ Base starts with: **1 prospector, 1 miner, 1 hauler** and stockpile **100 iron, 
 
 Refinery recipe: `1 iron + 1 copper → 2 fuel`.
 
-The loop: prospectors find deposits → miners extract → haulers bank the materials → spend on new vehicles and fuel → more capacity → faster extraction. The tension is early: the stockpile is finite and everything burns fuel, so a player who dispatches unwisely stalls. Numbers are tunable in a single config (`:common:sim`).
+The loop: prospectors find deposits → miners extract → haulers bank the materials → spend on new vehicles and fuel → more capacity → faster extraction. The tension is early: the stockpile is finite and everything burns fuel, so a player who dispatches unwisely stalls. Numbers are tunable per owner: vehicle kinds own their rates/cargo/speeds (`vehicle`); world geometry is owned by `world`.
 
 ## Entity state machines
 
