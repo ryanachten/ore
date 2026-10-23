@@ -11,7 +11,7 @@ Horizontal work (infra, messaging, frontend, domain) is deliberately **interleav
 - **One primary learning per slice.** If a slice feels like two learnings, it's too fat — cut scope into its `Deferred` list.
 - Every slice is its own branch/PR. `make lint test` stays green; the state-machine logic gets unit tests in the same slice.
 - New-to-me tech per slice is bounded and called out, so each slice has a specific thing to absorb (Spring + event-driven first).
-- The **spine** is: `world` clock → facts (Kinesis) → projections → WS → React, plus the ops plane (EventBridge→SNS→SQS) for commands. It lands in small chunks: the pulse (~S5), the map (~S6), the ops plane (~S7). Once it's live everything after rides it; later slices add one domain feature + one concept each.
+- The **spine** is: `world` clock → facts (Kinesis) → projections → WS → React, plus the ops plane (EventBridge→SNS→SQS) for commands. It lands in small chunks: the pulse (~S5), the facts plane (~S6), the map (~S7), the ops plane (~S8). Once it's live everything after rides it; later slices add one domain feature + one concept each.
 - When a slice resolves an entry in PROJECT.md's "Open questions", update it.
 
 ## S1 — The skeleton: envelope, LocalStack, first Spring app
@@ -21,7 +21,7 @@ Horizontal work (infra, messaging, frontend, domain) is deliberately **interleav
 **Build**
 - Gradle Kotlin DSL multi-module: root + `common` (plain JVM library — **no Spring**); `frontend/` is scaffolded in S5.
 - Event envelope in `common`: `{ id, type, tick, source, version, payload }`, `version: 1`. A pure data class; JSON mapping happens inline with Jackson where the apps use it.
-- docker compose: LocalStack (auth token); `localstack/init.sh` seeds the `ore-sim` topic. Postgres 16 lands in S8, the slice that first uses it.
+- docker compose: LocalStack (auth token); `localstack/init.sh` seeds the `ore-sim` topic. Postgres 16 lands in S9, the slice that first uses it.
 - `gateway`: the one Spring Boot app. AWS SDK v2 SNS client wired as a bean with the LocalStack endpoint override; actuator `/health`. (Structured Logback defers to S2, where the tick stream gives it something to format.)
 - Makefile: `make up/logs/lint/test`.
 - Tests: `version` defaults to 1; payload is immutable.
@@ -100,26 +100,45 @@ Horizontal work (infra, messaging, frontend, domain) is deliberately **interleav
 
 ---
 
-## S6 — The Map: a vehicle moves
+## S6 — The Facts Plane: a vehicle moves
 
-**Goal.** A canvas shows the base and a vehicle advancing one step per tick along a canned out-and-back journey, updating live. A browser that joins mid-run receives the current snapshot. (Vehicle *kinds* — prospector/miner/hauler — are deferred to S10; this slice runs one generic vehicle.)
+**Goal.** The `vehicle` app hosts a vehicle state machine advancing one step per tick; its facts stream to Kinesis; the gateway folds them into an in-memory world view and pushes a snapshot on WS connect plus incremental updates. The browser shows the vehicle's state and position as live text — no map rendering yet. (Vehicle *kinds* — prospector/miner/hauler — are deferred to S11; this slice runs one generic vehicle.)
 
 **Build**
 - Kinesis stream `ore-facts` added to init script.
-- `vehicle` module: a plain Spring Boot app (no kind flag yet — one generic vehicle) that subscribes to `ore-sim` (SNS HTTP endpoint) for ticks; a `Vehicle` state machine (idle → travel → … → idle) advances one step per tick; publishes facts (`vehicle.state`, `vehicle.position`) **directly** to Kinesis, partition key `vehicle-<id>`, facts carry `tick`; dedupes duplicate ticks by event id. State is immutable — a pure `step(vehicle, tick) -> vehicle` function, unit-tested without Spring.
+- No shared world geometry yet: the vehicle owns a simple movement update on each tick. Bounds and the base position are defined in S7, where the map forces the decision. Any re-targeting/demo logic is disposable scaffolding if added.
+- `vehicle` module: a plain Spring Boot app (no kind flag yet — one generic vehicle) that subscribes to `ore-sim` (SNS HTTP endpoint) for ticks; on each tick the vehicle updates its position/state and publishes facts (`vehicle.state`, `vehicle.position`) **directly** to Kinesis, partition key `vehicle-<id>`, facts carry `tick`; dedupes duplicate ticks by event id.
 - `gateway`: Kinesis shard consumer (poll loop) folds facts into an in-memory world view; broadcasts a **snapshot on WS connect + incremental updates** on each new fact.
-- `frontend`: canvas draws base + vehicle (dot, state label); re-renders on snapshot/updates.
-- Tests: pure state-machine step tests (no Spring); consumer dedupe test.
+- `frontend`: a live panel under the pulse — vehicle id, state, position, tick — updating as WS updates arrive.
+- Tests: consumer dedupe test; the travel logic is covered by the live demo rather than a unit test. Extract it if it grows complex (e.g. S11's miner).
 
-**Primary learning.** Event-sourcing seeds (facts are immutable, ordered, replayable records); Kinesis put + consume mechanics (partition key, shard iterator, poll loop); snapshot-vs-live on WS; first entity state machine. (`--kind` and multiple vehicle types are deferred to S10.)
+**Primary learning.** Event-sourcing seeds (facts are immutable, ordered, replayable records); Kinesis put + consume mechanics (partition key, shard iterator, poll loop); snapshot-vs-live on WS; first entity updates flowing through the facts plane. (`--kind` and multiple vehicle types are deferred to S11.)
 
-**Deferred.** Vehicle kinds, Postgres (projections are in-memory here), commands, deposits, fuel, EventBridge.
+**Deferred.** World geometry and canvas rendering (S7), vehicle kinds, Postgres (projections are in-memory here), commands, deposits, fuel, EventBridge.
 
-**Done when.** Two browsers; the one that connects mid-run still shows the same live map; gateway logs show facts streaming from Kinesis.
+**Done when.** The live panel shows the vehicle advancing; a browser that connects mid-run still sees the current state; gateway logs show facts streaming from Kinesis.
 
 ---
 
-## S7 — The Ops Plane: commands & telemetry
+## S7 — The Map: canvas
+
+**Goal.** The map is defined and rendered: bounds and a base position fix the world's coordinate space, and a canvas draws them plus the vehicle (dot + state label) advancing live. A browser that joins mid-run still shows the current map.
+
+**Build**
+- Map definition: world bounds (grid size) and base position as plain config; `gateway` serves them via `GET /api/world`. Ownership is deliberately provisional — `world` takes the geometry over as seeded data in S10.
+- `vehicle`: no new movement logic — keep the S6 travel primitive; re-seed its demo target so the journey stays inside the new bounds (base as the start point).
+- `frontend`: canvas component; world→screen coordinate mapping; draws bounds, base marker, vehicle dot + state label; re-renders on the S6 snapshot/incremental WS updates. No new wire format — everything rides the existing WS.
+- Tests: coordinate-mapping unit test.
+
+**Primary learning.** Canvas rendering lifecycle in React (draw vs state, re-render on push updates); coordinate systems (world units → pixels). The backend addition is just the geometry the canvas needs.
+
+**Deferred.** Randomised base placement, world-owned geometry (S10), deposit markers (S10), click-to-dispatch (S8 — commands need the ops plane first), pan/zoom, terrain.
+
+**Done when.** The vehicle visibly moves on the canvas each tick and stays within the drawn bounds; a second browser joining mid-run shows the same live map.
+
+---
+
+## S8 — The Ops Plane: commands & telemetry
 
 **Goal.** Click the map to dispatch the vehicle to that point — the command path `gateway → EventBridge → SNS → SQS → vehicle` works, idempotently. The vehicle's status/telemetry streams back over `EventBridge → SNS → gateway → WS`, and a broker inspector shows message counts. Command vs event becomes tangible.
 
@@ -133,13 +152,13 @@ Horizontal work (infra, messaging, frontend, domain) is deliberately **interleav
 
 **Primary learning.** Command vs event (the same action produces a command on the ops plane and a fact on Kinesis); EventBridge content-based routing; SNS→SQS filter policies; SQS at-least-once + visibility timeout + idempotency; DLQ present (redrive deferred).
 
-**Deferred.** Runtime per-entity queue provisioning (S11), DLQ redrive tooling, deposits, fuel.
+**Deferred.** Runtime per-entity queue provisioning (S12), DLQ redrive tooling, deposits, fuel.
 
 **Done when.** Click-to-dispatch works from the browser; a replayed duplicate command doesn't double-travel; inspector shows queue depth after commands; status events stream live.
 
 ---
 
-## S8 — The Source of Truth: projections & replay
+## S9 — The Source of Truth: projections & replay
 
 **Goal.** The gateway now persists `worldmap`, `inventory`, and `ledger` projections in Postgres from the fact stream; snapshot-on-join reads Postgres; `make replay` wipes the DB and rebuilds everything from Kinesis. The fact log is provably the source of truth.
 
@@ -151,18 +170,18 @@ Horizontal work (infra, messaging, frontend, domain) is deliberately **interleav
 
 **Primary learning.** Projections as disposable read models vs the log as truth; replay/rebuild; Flyway + `JdbcTemplate`; Spring `DataSource` + write transactions.
 
-**Deferred.** Outbox (S11), deposits, miner, fuel, ledger UI.
+**Deferred.** Outbox (S12), deposits, miner, fuel, ledger UI.
 
 **Done when.** `make replay` rebuilds a wiped DB into the same map; snapshots come from Postgres; all three projections populated.
 
 ---
 
-## S9 — The Discovery: deposits & world reactions
+## S10 — The Discovery: deposits & world reactions
 
 **Goal.** Dispatch the prospector to scan; on completion a deposit node appears on the map with a richness estimate. `world` is now a first-class participant that *reacts to facts*.
 
 **Build**
-- `world`: **a stateful service from here on** — it gains Postgres + a Kinesis consumer (until now it was just a tick clock); Flyway + Postgres `deposits`; seeds the terrain deterministically at startup; emits `deposit.seeded` facts (direct put for now — outbox is S11).
+- `world`: **a stateful service from here on** — it gains Postgres + a Kinesis consumer (until now it was just a tick clock); Flyway + Postgres `deposits`; seeds the terrain deterministically at startup; emits `deposit.seeded` facts (direct put for now — outbox is S12). **Ownership handoff:** world bounds + base position move from S7's gateway config to `world`'s deterministic seed (base position randomised per seed); `gateway`'s `/api/world` proxies `world` from here on.
 - `prospector`: scan step is a tick-countdown; emits `scan.completed` (location + radius).
 - `world` becomes a second Kinesis consumer: reacts to `scan.completed` → emits `deposit.discovered` (deposits within radius, with estimates).
 - `gateway`: `deposits` projection; map renders deposit markers (colored by richness).
@@ -177,7 +196,7 @@ Horizontal work (infra, messaging, frontend, domain) is deliberately **interleav
 
 ---
 
-## S10 — The Mine: extraction, cargo & inventory
+## S11 — The Mine: extraction, cargo & inventory
 
 **Goal.** A miner extracts ore from a discovered deposit: travels, fills cargo over N ticks, returns to base and unloads. An inventory panel shows stockpile + per-vehicle cargo, derived from facts. Two vehicle kinds run side by side.
 
@@ -185,9 +204,9 @@ Horizontal work (infra, messaging, frontend, domain) is deliberately **interleav
 - `miner` kind — **vehicle kinds (prospector/miner/hauler) land here**: idle → travel → extract → travel → idle; cargo capacity, extraction rate; unload at base emits `materials.deposited`. The `vehicle` app now hosts multiple kinds: config gains a per-vehicle kind map and it routes commands by `vehicleId` to the right state machine.
 - Facts: `vehicle.state`, `materials.extracted` (cargo), `materials.deposited` (stockpile).
 - `gateway`: `inventory` projection becomes real — stockpile + per-vehicle cargo, pushed on change.
-- `vehicle-2` queue + DLQ + filter policy (still statically provisioned; runtime provisioning is S11); the same `vehicle` app long-polls it too — no second container.
-- `frontend`: inventory panel (stockpile + cargo bars); select a miner → dispatch to a deposit (reuses the S7 command path).
-- `:common:sim`: mining rates, cargo sizes, distances (tunables).
+- `vehicle-2` queue + DLQ + filter policy (still statically provisioned; runtime provisioning is S12); the same `vehicle` app long-polls it too — no second container.
+- `frontend`: inventory panel (stockpile + cargo bars); select a miner → dispatch to a deposit (reuses the S8 command path).
+- Tunables live with their owner: per-kind vehicle rates/cargo/speeds in `vehicle`; world geometry in `world` (S10). No shared constants module.
 - Tests: miner state machine incl. cargo-full → auto-return.
 
 **Primary learning.** A second entity state machine hosted alongside the first (one app, N queues, routing by `vehicleId`); derived accounting (stockpile = a fold over facts); economy enters the sim; scaling the command path to a second filtered queue.
@@ -198,7 +217,7 @@ Horizontal work (infra, messaging, frontend, domain) is deliberately **interleav
 
 ---
 
-## S11 — The Base: the catch-22 closes
+## S12 — The Base: the catch-22 closes
 
 **Goal.** The base service is live: it owns storage, the refinery, the build queue, refuel, and vehicle provisioning. Spend the stockpile to build a second miner → it appears on the map with its own queue and subscription, ready to dispatch. Fuel burns per tick; low fuel → auto-return and refill from the stockpile. This is the whole loop.
 
@@ -219,7 +238,7 @@ Horizontal work (infra, messaging, frontend, domain) is deliberately **interleav
 
 ---
 
-## S12 — The Archive: facts land in S3
+## S13 — The Archive: facts land in S3
 
 **Goal.** Every fact lands in S3 `ore-ledger`, date-partitioned, buffered through Firehose. Cold storage is real.
 
@@ -236,7 +255,7 @@ Horizontal work (infra, messaging, frontend, domain) is deliberately **interleav
 
 ---
 
-## S13 — The Frontend: ledger, scrubber, polish
+## S14 — The Frontend: ledger, scrubber, polish
 
 **Goal.** The app becomes the whole experience: a ledger view with a tick scrubber, a complete inspector (incl. DLQ counts and consumer lag), polished map/inventory/build panels. Everything rides the existing spine.
 
@@ -254,7 +273,7 @@ Horizontal work (infra, messaging, frontend, domain) is deliberately **interleav
 
 ---
 
-## S14 — Depth (stretch)
+## S15 — Depth (stretch)
 
 Each item is one focused learning; pick up as desired. "Appears in" maps to PROJECT.md's learning table.
 
