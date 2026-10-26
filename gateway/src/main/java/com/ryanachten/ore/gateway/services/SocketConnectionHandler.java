@@ -53,7 +53,7 @@ public class SocketConnectionHandler extends TextWebSocketHandler {
             1,
             Map.of("state", currentState));
     var eventPayload = objectMapper.writeValueAsString(event);
-    session.sendMessage(new TextMessage(eventPayload));
+    concurrentSession.sendMessage(new TextMessage(eventPayload));
 
     log.info("Connection established for session: {}", sessionId);
   }

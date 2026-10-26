@@ -18,6 +18,7 @@ import software.amazon.awssdk.services.kinesis.model.GetRecordsRequest;
 import software.amazon.awssdk.services.kinesis.model.GetRecordsResponse;
 import software.amazon.awssdk.services.kinesis.model.GetShardIteratorRequest;
 import software.amazon.awssdk.services.kinesis.model.ListShardsRequest;
+import software.amazon.awssdk.services.kinesis.model.Record;
 import software.amazon.awssdk.services.kinesis.model.Shard;
 import software.amazon.awssdk.services.kinesis.model.ShardIteratorType;
 import tools.jackson.databind.ObjectMapper;
@@ -101,26 +102,40 @@ public class VehicleUpdateConsumer implements SmartLifecycle {
   }
 
   private void getShardRecords(String shardId) {
-    var iterator = shardIterators.get(shardId);
-    var response = getRecords(iterator);
-    response
-        .records()
-        .forEach(
-            r -> {
-              var data = r.data().asUtf8String();
-              socketConnectionHandler.broadcastEvent(data);
-              var envelope = objectMapper.readValue(data, EventEnvelope.class);
-              var vehicle =
-                  objectMapper.convertValue(envelope.payload().get("vehicle"), Vehicle.class);
-              vehicleRepository.updateState(vehicle, envelope.tick());
-            });
+    try {
+      var iterator = shardIterators.get(shardId);
+      var response = getRecords(iterator);
+      response.records().forEach(this::processRecord);
 
-    shardIterators.put(shardId, response.nextShardIterator());
+      var nextIterator = response.nextShardIterator();
+      if (iterator == null) {
+        log.warn("Shard {} returned no iterator. Shard has been closed", shardId);
+      }
+      shardIterators.put(shardId, nextIterator);
+    } catch (RuntimeException exception) {
+      log.error("error getting records for shard {}", shardId, exception);
+    }
   }
 
   private GetRecordsResponse getRecords(String shardIterator) {
     var request = GetRecordsRequest.builder().shardIterator(shardIterator).limit(25).build();
 
     return kinesisClient.getRecords(request);
+  }
+
+  private void processRecord(Record record) {
+    try {
+      var data = record.data().asUtf8String();
+      socketConnectionHandler.broadcastEvent(data);
+      var envelope = objectMapper.readValue(data, EventEnvelope.class);
+      var rawVehicle = envelope.payload().get("vehicle");
+      if (rawVehicle == null) {
+        return;
+      }
+      var vehicle = objectMapper.convertValue(rawVehicle, Vehicle.class);
+      vehicleRepository.updateState(vehicle, envelope.tick());
+    } catch (RuntimeException exception) {
+      log.error("error processing record", exception);
+    }
   }
 }

@@ -15,7 +15,7 @@ public class InmemoryWorldStateRepository implements WorldStateRepository {
 
   @Override
   public void updateState(Vehicle vehicle, long tick) {
-    maxTick.set(Math.max(maxTick.get(), tick));
+    maxTick.accumulateAndGet(tick, Math::max);
     vehicles.put(vehicle.id(), vehicle);
   }
 
