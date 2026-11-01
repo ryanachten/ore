@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import com.ryanachten.ore.common.contracts.EventEnvelope;
+import com.ryanachten.ore.common.contracts.EventEnvelopeDto;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -12,19 +12,19 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
-class EventEnvelopeTest {
+class EventEnvelopeDtoTest {
   private static final UUID EVENT_ID = UUID.fromString("e7c5f4c0-0000-4000-8000-000000000001");
 
   @Test
   void versionDefaultsToOneWhenNotProvided() {
-    var envelope = new EventEnvelope(EVENT_ID, "sim.tick", 42L, "world", 0, Map.of());
+    var envelope = new EventEnvelopeDto(EVENT_ID, "sim.tick", 42L, "world", 0, Map.of());
     assertEquals(1, envelope.version());
   }
 
   @Test
   void preservesAllFields() {
     Map<String, Object> payload = Map.of("seed", 7);
-    var envelope = new EventEnvelope(EVENT_ID, "sim.tick", 42L, "world", 1, payload);
+    var envelope = new EventEnvelopeDto(EVENT_ID, "sim.tick", 42L, "world", 1, payload);
 
     assertEquals(EVENT_ID, envelope.id());
     assertEquals("sim.tick", envelope.type());
@@ -37,7 +37,7 @@ class EventEnvelopeTest {
   @Test
   void payloadIsCopiedAtConstruction() {
     Map<String, Object> mutable = new HashMap<>(Map.of("seed", 7));
-    var envelope = new EventEnvelope(EVENT_ID, "sim.tick", 42L, "world", 1, mutable);
+    var envelope = new EventEnvelopeDto(EVENT_ID, "sim.tick", 42L, "world", 1, mutable);
 
     mutable.put("seed", 999);
 
@@ -46,7 +46,7 @@ class EventEnvelopeTest {
 
   @Test
   void returnedPayloadIsUnmodifiable() {
-    var envelope = new EventEnvelope(EVENT_ID, "sim.tick", 42L, "world", 1, Map.of("seed", 7));
+    var envelope = new EventEnvelopeDto(EVENT_ID, "sim.tick", 42L, "world", 1, Map.of("seed", 7));
 
     assertThrows(UnsupportedOperationException.class, () -> envelope.payload().put("other", 1));
   }
@@ -57,7 +57,7 @@ class EventEnvelopeTest {
     List<Object> list = new ArrayList<>(List.of("a", inner));
     Map<String, Object> payload = new HashMap<>(Map.of("inner", inner, "list", list));
 
-    final var envelope = new EventEnvelope(EVENT_ID, "sim.tick", 42L, "world", 1, payload);
+    final var envelope = new EventEnvelopeDto(EVENT_ID, "sim.tick", 42L, "world", 1, payload);
 
     inner.put("k", "mutated");
     list.set(1, "mutated");

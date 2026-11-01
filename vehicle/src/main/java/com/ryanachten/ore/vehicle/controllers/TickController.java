@@ -1,7 +1,7 @@
 package com.ryanachten.ore.vehicle.controllers;
 
 import com.ryanachten.ore.common.config.SnsTopics;
-import com.ryanachten.ore.common.contracts.EventEnvelope;
+import com.ryanachten.ore.common.contracts.EventEnvelopeDto;
 import com.ryanachten.ore.common.services.SnsSubscriptionService;
 import com.ryanachten.ore.common.services.SnsTopicArnResolver;
 import com.ryanachten.ore.vehicle.services.VehicleService;
@@ -69,7 +69,7 @@ public class TickController {
         break;
       case "Notification":
         var message = payload.get("Message");
-        var event = objectMapper.readValue(message.stringValue(), EventEnvelope.class);
+        var event = objectMapper.readValue(message.stringValue(), EventEnvelopeDto.class);
         vehicleService.handleTick(event.tick());
         break;
       case "UnsubscribeConfirmation":

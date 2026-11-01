@@ -1,7 +1,7 @@
 package com.ryanachten.ore.gateway.repositories;
 
-import com.ryanachten.ore.common.contracts.Vehicle;
 import com.ryanachten.ore.gateway.models.CurrentWorldState;
+import com.ryanachten.ore.gateway.models.Vehicle;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;

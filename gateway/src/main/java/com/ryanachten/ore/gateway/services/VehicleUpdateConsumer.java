@@ -1,8 +1,9 @@
 package com.ryanachten.ore.gateway.services;
 
 import com.ryanachten.ore.common.config.KinesisStreams;
-import com.ryanachten.ore.common.contracts.EventEnvelope;
-import com.ryanachten.ore.common.contracts.Vehicle;
+import com.ryanachten.ore.common.contracts.EventEnvelopeDto;
+import com.ryanachten.ore.common.contracts.VehicleDto;
+import com.ryanachten.ore.gateway.config.ModelMapper;
 import com.ryanachten.ore.gateway.repositories.WorldStateRepository;
 import java.util.HashMap;
 import java.util.List;
@@ -31,6 +32,7 @@ public class VehicleUpdateConsumer implements SmartLifecycle {
   private final HashMap<String, String> shardIterators = new HashMap<>();
   private final SocketConnectionHandler socketConnectionHandler;
   private final WorldStateRepository vehicleRepository;
+  private final ModelMapper mapper;
   private Boolean isRunning = false;
   private ScheduledExecutorService scheduler;
 
@@ -40,11 +42,13 @@ public class VehicleUpdateConsumer implements SmartLifecycle {
       KinesisClient kinesisClient,
       ObjectMapper objectMapper,
       SocketConnectionHandler socketConnectionHandler,
-      WorldStateRepository vehicleRepository) {
+      WorldStateRepository vehicleRepository,
+      ModelMapper mapper) {
     this.kinesisClient = kinesisClient;
     this.objectMapper = objectMapper;
     this.socketConnectionHandler = socketConnectionHandler;
     this.vehicleRepository = vehicleRepository;
+    this.mapper = mapper;
   }
 
   @Override
@@ -127,12 +131,13 @@ public class VehicleUpdateConsumer implements SmartLifecycle {
     try {
       var data = record.data().asUtf8String();
       socketConnectionHandler.broadcastEvent(data);
-      var envelope = objectMapper.readValue(data, EventEnvelope.class);
+      var envelope = objectMapper.readValue(data, EventEnvelopeDto.class);
       var rawVehicle = envelope.payload().get("vehicle");
       if (rawVehicle == null) {
         return;
       }
-      var vehicle = objectMapper.convertValue(rawVehicle, Vehicle.class);
+      var vehicleDto = objectMapper.convertValue(rawVehicle, VehicleDto.class);
+      var vehicle = mapper.toVehicle(vehicleDto);
       vehicleRepository.updateState(vehicle, envelope.tick());
     } catch (RuntimeException exception) {
       log.error("error processing record", exception);

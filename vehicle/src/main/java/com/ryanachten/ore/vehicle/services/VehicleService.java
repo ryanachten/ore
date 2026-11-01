@@ -1,12 +1,13 @@
 package com.ryanachten.ore.vehicle.services;
 
 import com.ryanachten.ore.common.config.KinesisStreams;
-import com.ryanachten.ore.common.contracts.EventEnvelope;
+import com.ryanachten.ore.common.contracts.EventEnvelopeDto;
 import com.ryanachten.ore.common.contracts.EventType;
-import com.ryanachten.ore.common.contracts.Position;
-import com.ryanachten.ore.common.contracts.Vehicle;
 import com.ryanachten.ore.common.contracts.VehicleState;
 import com.ryanachten.ore.common.services.KinesisStreamArnResolver;
+import com.ryanachten.ore.vehicle.config.ModelMapper;
+import com.ryanachten.ore.vehicle.models.Position;
+import com.ryanachten.ore.vehicle.models.Vehicle;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +29,7 @@ public class VehicleService {
   private final KinesisClient kinesisClient;
   private final String streamArn;
   private final ObjectMapper objectMapper;
+  private final ModelMapper modelMapper;
 
   private long lastTick = Long.MIN_VALUE;
   private static final String SOURCE = "vehicle";
@@ -35,13 +37,15 @@ public class VehicleService {
   public VehicleService(
       KinesisClient kinesisClient,
       KinesisStreamArnResolver kinesisStreamArnResolver,
-      ObjectMapper objectMapper) {
+      ObjectMapper objectMapper,
+      ModelMapper modelMapper) {
     // TODO: placeholder seeding of vehicles, will eventually be provisioned on an event basis
     vehicles.add(new Vehicle(UUID.randomUUID(), VehicleState.IDLE, new Position(0, 0)));
 
     this.kinesisClient = kinesisClient;
     this.streamArn = kinesisStreamArnResolver.resolve(KinesisStreams.ORE_FACTS);
     this.objectMapper = objectMapper;
+    this.modelMapper = modelMapper;
   }
 
   // TODO: this is placeholder tick handling, will eventually conduct business logic like wayfinding
@@ -82,9 +86,15 @@ public class VehicleService {
   }
 
   private PutRecordsRequestEntry createPublishRequest(Vehicle vehicle, long tick) {
+    var vehicleDto = modelMapper.toVehicleDto(vehicle);
     var envelope =
-        new EventEnvelope(
-            UUID.randomUUID(), EventType.VEHICLE_TICK, tick, SOURCE, 1, Map.of("vehicle", vehicle));
+        new EventEnvelopeDto(
+            UUID.randomUUID(),
+            EventType.VEHICLE_TICK,
+            tick,
+            SOURCE,
+            1,
+            Map.of("vehicle", vehicleDto));
 
     var envelopePayload = objectMapper.writeValueAsBytes(envelope);
     return PutRecordsRequestEntry.builder()

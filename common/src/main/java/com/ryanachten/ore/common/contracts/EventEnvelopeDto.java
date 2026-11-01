@@ -15,9 +15,9 @@ import java.util.stream.Collectors;
  * @param version the payload schema version; defaults to 1 when omitted
  * @param payload the event data, stored as an unmodifiable map
  */
-public record EventEnvelope(
+public record EventEnvelopeDto(
     UUID id, String type, long tick, String source, int version, Map<String, Object> payload) {
-  public EventEnvelope {
+  public EventEnvelopeDto {
     if (version == 0) {
       version = 1;
     }
@@ -44,7 +44,7 @@ public record EventEnvelope(
                   Map.Entry::getKey, entry -> freezeValue(entry.getValue())));
     }
     if (value instanceof List<?> list) {
-      return list.stream().map(EventEnvelope::freezeValue).toList();
+      return list.stream().map(EventEnvelopeDto::freezeValue).toList();
     }
     return value;
   }

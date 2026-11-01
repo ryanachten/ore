@@ -1,4 +1,4 @@
-package com.ryanachten.ore.gateway.configuration;
+package com.ryanachten.ore.gateway.config;
 
 import com.ryanachten.ore.gateway.services.SocketConnectionHandler;
 import org.springframework.context.annotation.Configuration;

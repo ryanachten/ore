@@ -1,7 +1,7 @@
 package com.ryanachten.ore.world.services;
 
 import com.ryanachten.ore.common.config.SnsTopics;
-import com.ryanachten.ore.common.contracts.EventEnvelope;
+import com.ryanachten.ore.common.contracts.EventEnvelopeDto;
 import com.ryanachten.ore.common.contracts.EventType;
 import com.ryanachten.ore.common.services.SnsTopicArnResolver;
 import java.util.HashMap;
@@ -41,7 +41,7 @@ public class TickScheduler {
   public void tick() {
     var version = 1;
     var event =
-        new EventEnvelope(
+        new EventEnvelopeDto(
             UUID.randomUUID(), EVENT_TYPE, tickCount.longValue(), SOURCE, version, Map.of());
 
     var jsonPayload = objectMapper.writeValueAsString(event);

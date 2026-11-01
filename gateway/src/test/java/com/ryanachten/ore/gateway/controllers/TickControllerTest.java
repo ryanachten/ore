@@ -10,7 +10,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.ryanachten.ore.common.config.SnsTopics;
-import com.ryanachten.ore.common.contracts.EventEnvelope;
+import com.ryanachten.ore.common.contracts.EventEnvelopeDto;
 import com.ryanachten.ore.common.contracts.EventType;
 import com.ryanachten.ore.common.services.SnsTopicArnResolver;
 import com.ryanachten.ore.gateway.services.SocketConnectionHandler;
@@ -174,8 +174,8 @@ class TickControllerTest {
     return objectMapper.writeValueAsString(tickEnvelope(tick));
   }
 
-  private EventEnvelope tickEnvelope(long tick) {
-    return new EventEnvelope(
+  private EventEnvelopeDto tickEnvelope(long tick) {
+    return new EventEnvelopeDto(
         UUID.fromString("e7c5f4c0-0000-4000-8000-000000000001"),
         EventType.SIM_TICK,
         tick,

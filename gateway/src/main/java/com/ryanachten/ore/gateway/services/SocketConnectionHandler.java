@@ -1,6 +1,6 @@
 package com.ryanachten.ore.gateway.services;
 
-import com.ryanachten.ore.common.contracts.EventEnvelope;
+import com.ryanachten.ore.common.contracts.EventEnvelopeDto;
 import com.ryanachten.ore.common.contracts.EventType;
 import com.ryanachten.ore.gateway.repositories.WorldStateRepository;
 import java.util.Map;
@@ -45,7 +45,7 @@ public class SocketConnectionHandler extends TextWebSocketHandler {
 
     var currentState = worldStateRepository.getState();
     var event =
-        new EventEnvelope(
+        new EventEnvelopeDto(
             UUID.randomUUID(),
             EventType.CURRENT_WORLD_STATE,
             currentState.tick(),
