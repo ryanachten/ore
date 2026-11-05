@@ -13,7 +13,5 @@ dependencies {
 	api("software.amazon.awssdk:sns")
 	api("software.amazon.awssdk:kinesis")
 	api(libs.mapstruct)
-	annotationProcessor(libs.mapstruct.processor)
-	testAnnotationProcessor(libs.mapstruct.processor)
 	testImplementation(libs.junit.jupiter)
 }

@@ -13,9 +13,12 @@ services:
     environment:
       - AWS_ENDPOINT_OVERRIDE=http://localstack:4566
       - VEHICLE_HOST_URI=http://vehicle:8080
+      - WORLD_HOST_URI=http://world:8080
     depends_on:
       localstack:
         condition: service_healthy
+      world:
+        condition: service_started
   gateway:
     container_name: gateway
     build: ./gateway

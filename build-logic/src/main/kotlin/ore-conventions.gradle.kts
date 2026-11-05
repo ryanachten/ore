@@ -27,6 +27,8 @@ repositories {
 
 dependencies {
     testRuntimeOnly(libs.findLibrary("junit-platform-launcher").get())
+    annotationProcessor(libs.findLibrary("mapstruct-processor").get())
+    testAnnotationProcessor(libs.findLibrary("mapstruct-processor").get())
 }
 
 tasks.named<Test>("test") {

@@ -5,6 +5,7 @@ import com.ryanachten.ore.common.contracts.EventEnvelopeDto;
 import com.ryanachten.ore.common.services.SnsSubscriptionService;
 import com.ryanachten.ore.common.services.SnsTopicArnResolver;
 import com.ryanachten.ore.vehicle.services.VehicleService;
+import com.ryanachten.ore.vehicle.services.WorldDefinitionProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,6 +28,7 @@ public class TickController {
   private final SnsSubscriptionService snsSubscriptionService;
   private final ObjectMapper objectMapper;
   private final VehicleService vehicleService;
+  private final WorldDefinitionProvider worldDefinitionProvider;
 
   public TickController(
       @Value("${vehicle.host.uri}") String hostUri,
@@ -34,18 +36,21 @@ public class TickController {
       ObjectMapper objectMapper,
       SnsClient snsClient,
       SnsTopicArnResolver snsTopicArnResolver,
-      VehicleService vehicleService) {
-
-    var topicArn = snsTopicArnResolver.resolve(SnsTopics.ORE_SIM);
+      VehicleService vehicleService,
+      WorldDefinitionProvider worldDefinitionProvider) {
 
     this.objectMapper = objectMapper;
     this.vehicleService = vehicleService;
+    this.worldDefinitionProvider = worldDefinitionProvider;
+
+    var topicArn = snsTopicArnResolver.resolve(SnsTopics.ORE_SIM);
     this.snsSubscriptionService =
         new SnsSubscriptionService(snsClient, topicArn, protocol, hostUri + "/tick/subscription");
   }
 
   @EventListener(WebServerInitializedEvent.class)
   public void initController() {
+    worldDefinitionProvider.load();
     snsSubscriptionService.registerSubscription();
   }
 

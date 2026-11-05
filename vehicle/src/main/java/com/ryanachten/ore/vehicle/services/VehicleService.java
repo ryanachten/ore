@@ -30,6 +30,7 @@ public class VehicleService {
   private final String streamArn;
   private final ObjectMapper objectMapper;
   private final ModelMapper modelMapper;
+  private final WorldDefinitionProvider worldDefinitionProvider;
 
   private long lastTick = Long.MIN_VALUE;
   private static final String SOURCE = "vehicle";
@@ -38,7 +39,8 @@ public class VehicleService {
       KinesisClient kinesisClient,
       KinesisStreamArnResolver kinesisStreamArnResolver,
       ObjectMapper objectMapper,
-      ModelMapper modelMapper) {
+      ModelMapper modelMapper,
+      WorldDefinitionProvider worldDefinitionProvider) {
     // TODO: placeholder seeding of vehicles, will eventually be provisioned on an event basis
     vehicles.add(new Vehicle(UUID.randomUUID(), VehicleState.IDLE, new Position(0, 0)));
 
@@ -46,12 +48,13 @@ public class VehicleService {
     this.streamArn = kinesisStreamArnResolver.resolve(KinesisStreams.ORE_FACTS);
     this.objectMapper = objectMapper;
     this.modelMapper = modelMapper;
+    this.worldDefinitionProvider = worldDefinitionProvider;
   }
 
   // TODO: this is placeholder tick handling, will eventually conduct business logic like wayfinding
   public synchronized void handleTick(long tick) {
     // Prevent duplicate or out of order events triggering actions
-    if (tick <= lastTick) {
+    if (tick <= lastTick || worldDefinitionProvider.getDefinition() == null) {
       return;
     }
     lastTick = tick;
@@ -79,10 +82,13 @@ public class VehicleService {
   }
 
   private Vehicle incrementVehicle(Vehicle vehicle) {
+    var newY = vehicle.position().y() + 1;
+    if (newY >= worldDefinitionProvider.getDefinition().bounds().height()) {
+      return new Vehicle(vehicle.id(), VehicleState.IDLE, vehicle.position());
+    }
+
     return new Vehicle(
-        vehicle.id(),
-        VehicleState.TRAVELING,
-        new Position(vehicle.position().x(), vehicle.position().y() + 1));
+        vehicle.id(), VehicleState.TRAVELING, new Position(vehicle.position().x(), newY));
   }
 
   private PutRecordsRequestEntry createPublishRequest(Vehicle vehicle, long tick) {
