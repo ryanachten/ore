@@ -27,6 +27,7 @@ services:
     environment:
       - AWS_ENDPOINT_OVERRIDE=http://localstack:4566
       - GATEWAY_HOST_URI=http://gateway:8080
+      - WORLD_HOST_URI=http://world:8080
     depends_on:
       localstack:
         condition: service_healthy
