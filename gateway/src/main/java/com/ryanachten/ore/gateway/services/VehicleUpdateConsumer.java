@@ -33,7 +33,7 @@ public class VehicleUpdateConsumer implements SmartLifecycle {
   private final SocketConnectionHandler socketConnectionHandler;
   private final WorldStateRepository vehicleRepository;
   private final ModelMapper mapper;
-  private Boolean isRunning = false;
+  private boolean isRunning = false;
   private ScheduledExecutorService scheduler;
 
   private static final int POLL_PERIOD_MS = 1000;
@@ -53,7 +53,6 @@ public class VehicleUpdateConsumer implements SmartLifecycle {
 
   @Override
   public void start() {
-    isRunning = true;
     try {
       var shards = getShards();
       this.scheduler = Executors.newScheduledThreadPool(shards.size());
@@ -62,6 +61,7 @@ public class VehicleUpdateConsumer implements SmartLifecycle {
         scheduler.scheduleAtFixedRate(
             () -> getShardRecords(shard.shardId()), 0, POLL_PERIOD_MS, TimeUnit.MILLISECONDS);
       }
+      isRunning = true;
     } catch (IllegalAccessException exception) {
       log.error("Error getting records", exception);
     }
@@ -69,8 +69,10 @@ public class VehicleUpdateConsumer implements SmartLifecycle {
 
   @Override
   public void stop() {
+    if (scheduler != null) {
+      scheduler.shutdown();
+    }
     isRunning = false;
-    scheduler.shutdown();
   }
 
   @Override
